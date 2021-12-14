@@ -23,17 +23,24 @@ local consumer = require("apisix.consumer")
 local lrucache = core.lrucache.new({
     ttl = 300, count = 512
 })
+local consumers_lrucache = core.lrucache.new({
+    type = "plugin",
+})
 
 local schema = {
     type = "object",
+    title = "work with route or service object",
+    properties = {},
+}
+
+local consumer_schema = {
+    type = "object",
+    title = "work with consumer object",
     properties = {
         username = { type = "string" },
         password = { type = "string" },
     },
-    oneOf = {
-        {required = {"username", "password"}},
-        {required = {}}
-    }
+    required = {"username", "password"},
 }
 
 local plugin_name = "basic-auth"
@@ -44,10 +51,16 @@ local _M = {
     type = 'auth',
     name = plugin_name,
     schema = schema,
+    consumer_schema = consumer_schema
 }
 
-function _M.check_schema(conf)
-    local ok, err = core.schema.check(schema, conf)
+function _M.check_schema(conf, schema_type)
+    local ok, err
+    if schema_type == core.schema.TYPE_CONSUMER then
+        ok, err = core.schema.check(consumer_schema, conf)
+    else
+        ok, err = core.schema.check(schema, conf)
+    end
 
     if not ok then
         return false, err
@@ -61,22 +74,33 @@ local function extract_auth_header(authorization)
     local function do_extract(auth)
         local obj = { username = "", password = "" }
 
-        local m, err = ngx.re.match(auth, "Basic\\s(.+)")
+        local m, err = ngx.re.match(auth, "Basic\\s(.+)", "jo")
         if err then
             -- error authorization
             return nil, err
         end
 
+        if not m then
+            return nil, "Invalid authorization header format"
+        end
+
         local decoded = ngx.decode_base64(m[1])
+
+        if not decoded then
+            return nil, "Failed to decode authentication header: " .. m[1]
+        end
 
         local res
         res, err = ngx_re.split(decoded, ":")
         if err then
-            return nil, "split authorization err:" .. err
+            return nil, "Split authorization err:" .. err
+        end
+        if #res < 2 then
+            return nil, "Split authorization err: invalid decoded data: " .. decoded
         end
 
-        obj.username = ngx.re.gsub(res[1], "\\s+", "")
-        obj.password = ngx.re.gsub(res[2], "\\s+", "")
+        obj.username = ngx.re.gsub(res[1], "\\s+", "", "jo")
+        obj.password = ngx.re.gsub(res[2], "\\s+", "", "jo")
         core.log.info("plugin access phase, authorization: ",
                       obj.username, ": ", obj.password)
 
@@ -95,22 +119,22 @@ end
 
 local create_consume_cache
 do
-    local consumer_ids = {}
+    local consumer_names = {}
 
     function create_consume_cache(consumers)
-        core.table.clear(consumer_ids)
+        core.table.clear(consumer_names)
 
         for _, cur_consumer in ipairs(consumers.nodes) do
             core.log.info("consumer node: ",
                           core.json.delay_encode(cur_consumer))
-            consumer_ids[cur_consumer.auth_conf.username] = cur_consumer
+            consumer_names[cur_consumer.auth_conf.username] = cur_consumer
         end
 
-        return consumer_ids
+        return consumer_names
     end
 end
 
-function _M.access(conf, ctx)
+function _M.rewrite(conf, ctx)
     core.log.info("plugin access phase, conf: ", core.json.delay_encode(conf))
 
     -- 1. extract authorization from header
@@ -131,9 +155,9 @@ function _M.access(conf, ctx)
         return 401, { message = "Missing related consumer" }
     end
 
-    local consumers = core.lrucache.plugin(plugin_name, "consumers_key",
-            consumer_conf.conf_version,
-            create_consume_cache, consumer_conf)
+    local consumers = consumers_lrucache("consumers_key",
+        consumer_conf.conf_version,
+        create_consume_cache, consumer_conf)
 
     -- 3. check user exists
     local cur_consumer = consumers[username]
@@ -148,8 +172,7 @@ function _M.access(conf, ctx)
         return 401, { message = "Password is error" }
     end
 
-    ctx.consumer = cur_consumer
-    ctx.consumer_id = cur_consumer.consumer_id
+    consumer.attach_consumer(ctx, cur_consumer, consumer_conf)
 
     core.log.info("hit basic-auth access")
 end

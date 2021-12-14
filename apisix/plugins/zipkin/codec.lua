@@ -34,30 +34,14 @@ local function from_hex(str)
 end
 
 local function new_extractor()
-    return function(headers)
--- X-B3-Sampled: if an upstream decided to sample this request, we do too.
-        local sample = headers["x-b3-sampled"]
-        if sample == "1" or sample == "true" then
-            sample = true
-        elseif sample == "0" or sample == "false" then
-            sample = false
-        elseif sample ~= nil then
-            core.log.warn("x-b3-sampled header invalid; ignoring.")
-            sample = nil
-        end
-
--- X-B3-Flags: if it equals '1' then it overrides sampling policy
--- We still want to warn on invalid sample header, so do this after the above
-        local debug = headers["x-b3-flags"]
-        if debug == "1" then
-            sample = true
-        elseif debug ~= nil then
-            core.log.warn("x-b3-flags header invalid; ignoring.")
-        end
-
+    return function(ctx)
         local had_invalid_id = false
 
-        local trace_id = headers["x-b3-traceid"]
+        local zipkin_ctx = ctx.zipkin
+        local trace_id = zipkin_ctx.trace_id
+        local parent_span_id = zipkin_ctx.parent_span_id
+        local request_span_id = zipkin_ctx.request_span_id
+
         -- Validate trace id
         if trace_id and
             ((#trace_id ~= 16 and #trace_id ~= 32) or trace_id:match("%X")) then
@@ -65,7 +49,6 @@ local function new_extractor()
             had_invalid_id = true
         end
 
-        local parent_span_id = headers["x-b3-parentspanid"]
         -- Validate parent_span_id
         if parent_span_id and
             (#parent_span_id ~= 16 or parent_span_id:match("%X")) then
@@ -73,7 +56,6 @@ local function new_extractor()
             had_invalid_id = true
         end
 
-        local request_span_id = headers["x-b3-spanid"]
         -- Validate request_span_id
         if request_span_id and
             (#request_span_id ~= 16 or request_span_id:match("%X")) then
@@ -87,6 +69,7 @@ local function new_extractor()
 
         -- Process jaegar baggage header
         local baggage = {}
+        local headers = core.request.headers(ctx)
         for k, v in pairs(headers) do
             local baggage_key = k:match("^uberctx%-(.*)$")
             if baggage_key then
@@ -94,12 +77,16 @@ local function new_extractor()
             end
         end
 
+        core.log.info("new span context: trace id: ", trace_id,
+                      ", span id: ", request_span_id,
+                      ", parent span id: ", parent_span_id)
+
         trace_id = from_hex(trace_id)
         parent_span_id = from_hex(parent_span_id)
         request_span_id = from_hex(request_span_id)
 
         return new_span_context(trace_id, request_span_id, parent_span_id,
-                                 sample, baggage)
+                                baggage)
     end
 end
 
@@ -110,9 +97,8 @@ local function new_injector()
         headers["x-b3-parentspanid"] = span_context.parent_id
                                     and to_hex(span_context.parent_id) or nil
         headers["x-b3-spanid"] = to_hex(span_context.span_id)
-        local flags = core.request.header(nil, "x-b3-flags")
-        headers["x-b3-flags"] = flags
-        headers["x-b3-sampled"] = (not flags)
+        -- when we call this function, we already start to sample
+        headers["x-b3-sampled"] = "1"
         for key, value in span_context:each_baggage_item() do
             -- XXX: https://github.com/opentracing/specification/issues/117
             headers["uberctx-"..key] = ngx.escape_uri(value)

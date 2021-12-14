@@ -17,29 +17,52 @@
 local core = require("apisix.core")
 local tab_insert = table.insert
 local tab_concat = table.concat
+local string_format = string.format
 local re_gmatch = ngx.re.gmatch
+local re_sub = ngx.re.sub
 local ipairs = ipairs
+local ngx = ngx
+local str_find = core.string.find
+local str_sub  = string.sub
 
 local lrucache = core.lrucache.new({
     ttl = 300, count = 100
 })
 
 
+local reg = [[(\\\$[0-9a-zA-Z_]+)|]]         -- \$host
+            .. [[\$\{([0-9a-zA-Z_]+)\}|]]    -- ${host}
+            .. [[\$([0-9a-zA-Z_]+)|]]        -- $host
+            .. [[(\$|[^$\\]+)]]              -- $ or others
 local schema = {
     type = "object",
     properties = {
         ret_code = {type = "integer", minimum = 200, default = 302},
-        uri = {type = "string", minLength = 2},
-        http_to_https = {type = "boolean"}, -- default is false
+        uri = {type = "string", minLength = 2, pattern = reg},
+        regex_uri = {
+            description = "params for generating new uri that substitute from client uri, " ..
+                          "first param is regular expression, the second one is uri template",
+            type        = "array",
+            maxItems    = 2,
+            minItems    = 2,
+            items       = {
+                description = "regex uri",
+                type = "string",
+            }
+        },
+        http_to_https = {type = "boolean"},
+        encode_uri = {type = "boolean", default = false},
+        append_query_string = {type = "boolean", default = false},
     },
     oneOf = {
         {required = {"uri"}},
+        {required = {"regex_uri"}},
         {required = {"http_to_https"}}
     }
 }
 
 
-local plugin_name = "rewrite"
+local plugin_name = "redirect"
 
 local _M = {
     version = 0.1,
@@ -50,11 +73,6 @@ local _M = {
 
 
 local function parse_uri(uri)
-
-    local reg = [[ (\\\$[0-9a-zA-Z_]+) | ]]         -- \$host
-                .. [[ \$\{([0-9a-zA-Z_]+)\} | ]]    -- ${host}
-                .. [[ \$([0-9a-zA-Z_]+) | ]]        -- $host
-                .. [[ (\$|[^$\\]+) ]]               -- $ or others
     local iterator, err = re_gmatch(uri, reg, "jiox")
     if not iterator then
         return nil, err
@@ -84,12 +102,14 @@ function _M.check_schema(conf)
         return false, err
     end
 
-    if conf.uri then
-        local uri_segs, err = parse_uri(conf.uri)
-        if not uri_segs then
-            return false, err
+    if conf.regex_uri and #conf.regex_uri > 0 then
+        local _, _, err = re_sub("/fake_uri", conf.regex_uri[1],
+                                 conf.regex_uri[2], "jo")
+        if err then
+            local msg = string_format("invalid regex_uri (%s, %s), err:%s",
+                                      conf.regex_uri[1], conf.regex_uri[2], err)
+            return false, msg
         end
-        core.log.info(core.json.delay_encode(uri_segs))
     end
 
     return true
@@ -128,25 +148,72 @@ function _M.rewrite(conf, ctx)
 
     local ret_code = conf.ret_code
     local uri = conf.uri
+    local regex_uri = conf.regex_uri
 
     if conf.http_to_https and ctx.var.scheme == "http" then
         -- TODO： add test case
-        -- PR: https://github.com/apache/incubator-apisix/pull/1958
+        -- PR: https://github.com/apache/apisix/pull/1958
         uri = "https://$host$request_uri"
-        ret_code = 301
+        local method_name = ngx.req.get_method()
+        if method_name == "GET" or method_name == "HEAD" then
+            ret_code = 301
+        else
+         -- https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/308
+            ret_code = 308
+        end
     end
 
-    if uri and ret_code then
-        local new_uri, err = concat_new_uri(uri, ctx)
+    if ret_code then
+        local new_uri
+        if uri then
+            local err
+            new_uri, err = concat_new_uri(uri, ctx)
+            if not new_uri then
+                core.log.error("failed to generate new uri by: " .. uri .. err)
+                return 500
+            end
+        elseif regex_uri then
+            local n, err
+            new_uri, n, err = re_sub(ctx.var.uri, regex_uri[1],
+                                     regex_uri[2], "jo")
+            if not new_uri then
+                local msg = string_format("failed to substitute the uri:%s (%s) with %s, error:%s",
+                                          ctx.var.uri, regex_uri[1], regex_uri[2], err)
+                core.log.error(msg)
+                return 500
+            end
+
+            if n < 1 then
+                return
+            end
+        end
+
         if not new_uri then
-            core.log.error("failed to generate new uri by: ", uri, " error: ",
-                           err)
-            core.response.exit(500)
+            return
+        end
+
+        local index = str_find(new_uri, "?")
+        if conf.encode_uri then
+            if index then
+                new_uri = core.utils.uri_safe_encode(str_sub(new_uri, 1, index-1)) ..
+                          str_sub(new_uri, index)
+            else
+                new_uri = core.utils.uri_safe_encode(new_uri)
+            end
+        end
+
+        if conf.append_query_string and ctx.var.is_args == "?" then
+            if index then
+                new_uri = new_uri .. "&" .. (ctx.var.args or "")
+            else
+                new_uri = new_uri .. "?" .. (ctx.var.args or "")
+            end
         end
 
         core.response.set_header("Location", new_uri)
-        core.response.exit(ret_code)
+        return ret_code
     end
+
 end
 
 

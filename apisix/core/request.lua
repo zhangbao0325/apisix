@@ -16,16 +16,22 @@
 --
 
 local lfs = require("lfs")
+local log = require("apisix.core.log")
+local io = require("apisix.core.io")
 local ngx = ngx
 local get_headers = ngx.req.get_headers
-local tonumber = tonumber
-local error    = error
-local type     = type
-local str_fmt  = string.format
-local io_open  = io.open
+local clear_header = ngx.req.clear_header
+local tonumber  = tonumber
+local error     = error
+local type      = type
+local str_fmt   = string.format
+local str_lower = string.lower
 local req_read_body = ngx.req.read_body
 local req_get_body_data = ngx.req.get_body_data
 local req_get_body_file = ngx.req.get_body_file
+local req_get_post_args = ngx.req.get_post_args
+local req_get_uri_args = ngx.req.get_uri_args
+local req_set_uri_args = ngx.req.set_uri_args
 
 
 local _M = {}
@@ -65,12 +71,27 @@ function _M.header(ctx, name)
 end
 
 
-function _M.set_header(header_name, header_value)
+function _M.set_header(ctx, header_name, header_value)
+    if type(ctx) == "string" then
+        -- It would be simpler to keep compatibility if we put 'ctx'
+        -- after 'header_value', but the style is too ugly!
+        header_value = header_name
+        header_name = ctx
+        ctx = nil
+
+        log.warn("DEPRECATED: use set_header(ctx, header_name, header_value) instead")
+    end
+
     local err
     header_name, err = _validate_header_name(header_name)
     if err then
         error(err)
     end
+
+    if ctx and ctx.headers then
+        ctx.headers[header_name] = header_value
+    end
+
     ngx.req.set_header(header_name, header_value)
 end
 
@@ -104,23 +125,99 @@ function _M.get_remote_client_port(ctx)
 end
 
 
-local function get_file(file_name)
-    local f, err = io_open(file_name, 'r')
-    if not f then
-        return nil, err
+function _M.get_uri_args(ctx)
+    if not ctx then
+        ctx = ngx.ctx.api_ctx
     end
 
-    local req_body = f:read("*all")
-    f:close()
-    return req_body
+    if not ctx.req_uri_args then
+        -- use 0 to avoid truncated result and keep the behavior as the
+        -- same as other platforms
+        local args = req_get_uri_args(0)
+        ctx.req_uri_args = args
+    end
+
+    return ctx.req_uri_args
 end
 
 
-function _M.get_body(max_size)
+function _M.set_uri_args(ctx, args)
+    if not ctx then
+        ctx = ngx.ctx.api_ctx
+    end
+
+    ctx.req_uri_args = nil
+    return req_set_uri_args(args)
+end
+
+
+function _M.get_post_args(ctx)
+    if not ctx then
+        ctx = ngx.ctx.api_ctx
+    end
+
+    if not ctx.req_post_args then
+        req_read_body()
+
+        -- use 0 to avoid truncated result and keep the behavior as the
+        -- same as other platforms
+        local args, err = req_get_post_args(0)
+        if not args then
+            -- do we need a way to handle huge post forms?
+            log.error("the post form is too large: ", err)
+            args = {}
+        end
+        ctx.req_post_args = args
+    end
+
+    return ctx.req_post_args
+end
+
+
+local function check_size(size, max_size)
+    if max_size and size > max_size then
+        return nil, "request size " .. size .. " is greater than the "
+                    .. "maximum size " .. max_size .. " allowed"
+    end
+
+    return true
+end
+
+
+local function test_expect(var)
+    local expect = var.http_expect
+    return expect and str_lower(expect) == "100-continue"
+end
+
+
+function _M.get_body(max_size, ctx)
+    if max_size then
+        local var = ctx and ctx.var or ngx.var
+        local content_length = tonumber(var.http_content_length)
+        if content_length then
+            local ok, err = check_size(content_length, max_size)
+            if not ok then
+                -- When client_max_body_size is exceeded, Nginx will set r->expect_tested = 1 to
+                -- avoid sending the 100 CONTINUE.
+                -- We use trick below to imitate this behavior.
+                if test_expect(var) then
+                    clear_header("expect")
+                end
+
+                return nil, err
+            end
+        end
+    end
+
     req_read_body()
 
     local req_body = req_get_body_data()
     if req_body then
+        local ok, err = check_size(#req_body, max_size)
+        if not ok then
+            return nil, err
+        end
+
         return req_body
     end
 
@@ -129,19 +226,21 @@ function _M.get_body(max_size)
         return nil
     end
 
+    log.info("attempt to read body from file: ", file_name)
+
     if max_size then
         local size, err = lfs.attributes (file_name, "size")
         if not size then
             return nil, err
         end
 
-        if size > max_size then
-            return nil, "request size " .. size .. " is greater than the "
-                        .. "maximum size " .. max_size .. " allowed"
+        local ok, err = check_size(size, max_size)
+        if not ok then
+            return nil, err
         end
     end
 
-    local req_body, err = get_file(file_name)
+    local req_body, err = io.get_file(file_name)
     return req_body, err
 end
 
@@ -170,8 +269,20 @@ function _M.get_port(ctx)
 end
 
 
+function _M.get_path(ctx)
+    if not ctx then
+        ctx = ngx.ctx.api_ctx
+    end
+
+    return ctx.var.uri or ''
+end
+
+
 function _M.get_http_version()
     return ngx.req.http_version()
 end
+
+
+_M.get_method = ngx.req.get_method
 
 return _M

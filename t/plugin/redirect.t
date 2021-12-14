@@ -38,6 +38,7 @@ __DATA__
             })
             if not ok then
                 ngx.say(err)
+                return
             end
 
             ngx.say("done")
@@ -63,6 +64,7 @@ done
             })
             if not ok then
                 ngx.say(err)
+                return
             end
 
             ngx.say("done")
@@ -511,7 +513,7 @@ Location: https://foo.com/hello
 GET /t
 --- error_code: 400
 --- response_body eval
-qr/error_msg":"failed to check the configuration of plugin redirect err: value should match only one schema, but matches both schemas 1 and 2/
+qr/error_msg":"failed to check the configuration of plugin redirect err: value should match only one schema, but matches both schemas 1 and 3/
 --- no_error_log
 [error]
 
@@ -574,8 +576,8 @@ location /t {
         local core = require("apisix.core")
         local t = require("lib.test_admin")
 
-        local ssl_cert = t.read_file("conf/cert/apisix.crt")
-        local ssl_key =  t.read_file("conf/cert/apisix.key")
+        local ssl_cert = t.read_file("t/certs/apisix.crt")
+        local ssl_key =  t.read_file("t/certs/apisix.key")
         local data = {cert = ssl_cert, key = ssl_key, sni = "test.com"}
 
         local code, body = t.test('/apisix/admin/ssl/1',
@@ -633,7 +635,7 @@ location /t {
                 return
             end
 
-            ngx.say("ssl handshake: ", type(sess))
+            ngx.say("ssl handshake: ", sess ~= nil)
 
             local req = "GET /hello HTTP/1.0\r\nHost: test.com\r\nConnection: close\r\n\r\n"
             local bytes, err = sock:send(req)
@@ -664,14 +666,337 @@ location /t {
 GET /t
 --- response_body eval
 qr{connected: 1
-ssl handshake: userdata
+ssl handshake: true
 sent http request: 58 bytes.
 received: HTTP/1.1 200 OK
 received: Content-Type: text/plain
+received: Content-Length: 12
 received: Connection: close
-received: Server: \w+
+received: Server: APISIX/\d\.\d+(\.\d+)?
 received: \nreceived: hello world
 close: 1 nil}
 --- no_error_log
 [error]
 [alert]
+
+
+
+=== TEST 26: add plugin with new uri: /test/add
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin").test
+            local code, body = t('/apisix/admin/routes/1',
+                ngx.HTTP_PUT,
+                [[{
+                    "methods":["POST","GET","HEAD"],
+                    "plugins": {
+                        "redirect": {
+                            "http_to_https": true,
+                            "ret_code": 307
+                        }
+                    },
+                    "host": "test.com",
+                    "uri": "/hello-https"
+                }]]
+                )
+
+            if code >= 300 then
+                ngx.status = code
+            end
+            ngx.say(body)
+        }
+    }
+--- request
+GET /t
+--- response_body
+passed
+--- no_error_log
+[error]
+
+
+
+=== TEST 27: http to https post redirect
+--- request
+POST /hello-https
+--- more_headers
+Host: test.com
+--- response_headers
+Location: https://test.com/hello-https
+--- error_code: 308
+--- no_error_log
+[error]
+
+
+
+=== TEST 28: http to https get redirect
+--- request
+GET /hello-https
+--- more_headers
+Host: test.com
+--- response_headers
+Location: https://test.com/hello-https
+--- error_code: 301
+--- no_error_log
+[error]
+
+
+
+=== TEST 29: http to https head redirect
+--- request
+HEAD /hello-https
+--- more_headers
+Host: test.com
+--- response_headers
+Location: https://test.com/hello-https
+--- error_code: 301
+--- no_error_log
+[error]
+
+
+
+=== TEST 30: add plugin with new regex_uri: /test/1 redirect to http://test.com/1
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin").test
+            local code, body = t('/apisix/admin/routes/1',
+                ngx.HTTP_PUT,
+                [[{
+                    "plugins": {
+                        "redirect": {
+                            "regex_uri": ["^/test/(.*)", "http://test.com/${1}"],
+                            "ret_code": 301
+                        }
+                    },
+                    "uris": ["/test/*", "/hello"],
+                    "upstream": {
+                        "nodes": {
+                            "127.0.0.1:1980": 1
+                        },
+                        "type": "roundrobin"
+                    }
+                }]]
+                )
+
+            if code >= 300 then
+                ngx.status = code
+            end
+            ngx.say(body)
+        }
+    }
+--- request
+GET /t
+--- response_body
+passed
+--- no_error_log
+[error]
+
+
+
+=== TEST 31: regex_uri redirect
+--- request
+GET /test/1
+--- response_headers
+Location: http://test.com/1
+--- error_code: 301
+--- no_error_log
+[error]
+
+
+
+=== TEST 32: regex_uri not match, get response from upstream
+--- request
+GET /hello
+--- error_code: 200
+--- response_body
+hello world
+--- no_error_log
+[error]
+
+
+
+=== TEST 33: add plugin with new regex_uri: encode_uri = true
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin").test
+            local code, body = t('/apisix/admin/routes/1',
+                ngx.HTTP_PUT,
+                [[{
+                    "plugins": {
+                        "redirect": {
+                            "regex_uri": ["^/test/(.*)", "http://test.com/${1}"],
+                            "ret_code": 301,
+                            "encode_uri": true
+                        }
+                    },
+                    "uri": "/test/*",
+                    "upstream": {
+                        "nodes": {
+                            "127.0.0.1:1980": 1
+                        },
+                        "type": "roundrobin"
+                    }
+                }]]
+                )
+
+            if code >= 300 then
+                ngx.status = code
+            end
+            ngx.say(body)
+        }
+    }
+--- request
+GET /t
+--- response_body
+passed
+--- no_error_log
+[error]
+
+
+
+=== TEST 34: regex_uri redirect with special characters
+--- request
+GET /test/with%20space
+--- error_code: 200
+--- response_headers
+Location: http://test.com/with%20space
+--- error_code: 301
+--- no_error_log
+[error]
+
+
+
+=== TEST 35: add plugin with new uri: encode_uri = true
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin").test
+            local code, body = t('/apisix/admin/routes/1',
+                ngx.HTTP_PUT,
+                [[{
+                    "plugins": {
+                        "redirect": {
+                            "uri": "$uri",
+                            "ret_code": 301,
+                            "encode_uri": true
+                        }
+                    },
+                    "uri": "/hello*"
+                }]]
+                )
+
+            if code >= 300 then
+                ngx.status = code
+            end
+            ngx.say(body)
+        }
+    }
+--- request
+GET /t
+--- response_body
+passed
+--- no_error_log
+[error]
+
+
+
+=== TEST 36: redirect with special characters
+--- request
+GET /hello/with%20space
+--- response_headers
+Location: /hello/with%20space
+--- error_code: 301
+--- no_error_log
+[error]
+
+
+
+=== TEST 37: add plugin with new uri: $uri (append_query_string = true)
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin").test
+            local code, body = t('/apisix/admin/routes/1',
+                ngx.HTTP_PUT,
+                [[{
+                    "plugins": {
+                        "redirect": {
+                            "uri": "$uri",
+                            "ret_code": 302,
+                            "append_query_string": true
+                        }
+                    },
+                    "uri": "/hello"
+                }]]
+                )
+
+            if code >= 300 then
+                ngx.status = code
+            end
+            ngx.say(body)
+        }
+    }
+--- request
+GET /t
+--- response_body
+passed
+--- no_error_log
+[error]
+
+
+
+=== TEST 38: redirect
+--- request
+GET /hello?name=json
+--- response_headers
+Location: /hello?name=json
+--- error_code: 302
+--- no_error_log
+[error]
+
+
+
+=== TEST 39: add plugin with new uri: $uri?type=string (append_query_string = true)
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin").test
+            local code, body = t('/apisix/admin/routes/1',
+                ngx.HTTP_PUT,
+                [[{
+                    "plugins": {
+                        "redirect": {
+                            "uri": "$uri?type=string",
+                            "ret_code": 302,
+                            "append_query_string": true
+                        }
+                    },
+                    "uri": "/hello"
+                }]]
+                )
+
+            if code >= 300 then
+                ngx.status = code
+            end
+            ngx.say(body)
+        }
+    }
+--- request
+GET /t
+--- response_body
+passed
+--- no_error_log
+[error]
+
+
+
+=== TEST 40: redirect
+--- request
+GET /hello?name=json
+--- response_headers
+Location: /hello?type=string&name=json
+--- error_code: 302
+--- no_error_log
+[error]

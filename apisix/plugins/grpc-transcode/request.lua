@@ -23,17 +23,19 @@ local ngx    = ngx
 local string = string
 local table  = table
 local ipairs = ipairs
+local pcall = pcall
 local tonumber = tonumber
+local req_read_body = ngx.req.read_body
 
 return function (proto, service, method, pb_option, deadline, default_values)
     core.log.info("proto: ", core.json.delay_encode(proto, true))
     local m = util.find_method(proto, service, method)
     if not m then
         return false, "Undefined service method: " .. service .. "/" .. method
-                      .. " end"
+                      .. " end", 503
     end
 
-    ngx.req.read_body()
+    req_read_body()
 
     if pb_option then
         for _, opt in ipairs(pb_option) do
@@ -42,10 +44,10 @@ return function (proto, service, method, pb_option, deadline, default_values)
     end
 
     local map_message = util.map_message(m.input_type, default_values or {})
-    local encoded = pb.encode(m.input_type, map_message)
+    local ok, encoded = pcall(pb.encode, m.input_type, map_message)
 
-    if not encoded then
-        return false, "failed to encode request data to protobuf"
+    if not ok or not encoded then
+        return false, "failed to encode request data to protobuf", 400
     end
 
     local size = #encoded

@@ -2,63 +2,108 @@ name: CI
 
 on:
   push:
-    branches: [ master ]
+    branches: [master, 'release/**']
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
   pull_request:
-    branches: [ master ]
+    branches: [master, 'release/**']
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.run_number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
     strategy:
       fail-fast: false
       matrix:
-        platform: [ubuntu-18.04]
-        os_name: [linux_openresty, linux_tengine, linux_apisix_master_luarocks, linux_apisix_current_luarocks, linux_openresty_mtls]
-        include:
-          - platform: macos-latest
-            os_name: osx_openresty
+        platform:
+          - ubuntu-18.04
+        os_name:
+          - linux_openresty
+          - linux_openresty_1_17
+          - linux_openresty_mtls
+          - linux_tengine
 
     runs-on: ${{ matrix.platform }}
+    timeout-minutes: 90
     env:
       SERVER_NAME: ${{ matrix.os_name }}
-
+      OPENRESTY_VERSION: default
 
     steps:
       - name: Check out code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v2.4.0
+        with:
+          submodules: recursive
 
-#----------------------------------------------------------------------------
+      - name: Setup Go
+        uses: actions/setup-go@v2.1.4
+        with:
+          go-version: "1.15"
+
+      - name: Cache deps
+        uses: actions/cache@v2.1.7
+        env:
+          cache-name: cache-deps
+        with:
+          path: deps
+          key: ${{ runner.os }}-${{ env.cache-name }}-${{ matrix.os_name }}-${{ hashFiles('rockspec/apisix-master-0.rockspec') }}
+
+      - name: Extract branch name
+        if: ${{ startsWith(github.ref, 'refs/heads/release/') }}
+        id: branch_env
+        shell: bash
+        run: |
+          echo "##[set-output name=version;]$(echo ${GITHUB_REF##*/})"
+          echo "##[set-output name=fullname;]$(echo apache-apisix-${GITHUB_REF##*/}-src.tgz)"
+
+      - name: Linux launch common services
+        run: |
+          make ci-env-up project_compose_ci=ci/pod/docker-compose.common.yml
+
+      - name: Create tarball
+        if: ${{ startsWith(github.ref, 'refs/heads/release/') }}
+        run: |
+          make compress-tar VERSION=${{ steps.branch_env.outputs.version }}
+
+      - name: Remove source code
+        if: ${{ startsWith(github.ref, 'refs/heads/release/') }}
+        run: |
+          rm -rf $(ls -1 --ignore=*.tgz --ignore=ci --ignore=t --ignore=utils --ignore=.github)
+          tar zxvf ${{ steps.branch_env.outputs.fullname }}
+
       - name: Linux Get dependencies
-        if: matrix.platform == 'ubuntu-18.04'
-        run: sudo apt install -y cpanminus build-essential libncurses5-dev libreadline-dev libssl-dev perl etcd
+        run: sudo apt install -y cpanminus build-essential libncurses5-dev libreadline-dev libssl-dev perl libpcre3 libpcre3-dev libldap2-dev
+
+      - name: Build wasm code
+        if: startsWith(matrix.os_name, 'linux_openresty')
+        run: |
+          export TINYGO_VER=0.20.0
+          wget https://github.com/tinygo-org/tinygo/releases/download/v${TINYGO_VER}/tinygo_${TINYGO_VER}_amd64.deb 2>/dev/null
+          sudo dpkg -i tinygo_${TINYGO_VER}_amd64.deb
+          cd t/wasm && find . -type f -name "main.go" | xargs -Ip tinygo build -o p.wasm -scheduler=none -target=wasi p
 
       - name: Linux Before install
-        if: matrix.platform == 'ubuntu-18.04'
-        run: sudo ./.travis/${{ matrix.os_name }}_runner.sh before_install
+        run: sudo ./ci/${{ matrix.os_name }}_runner.sh before_install
+
+      - name: Start Dubbo Backend
+        if: matrix.os_name == 'linux_openresty'
+        run: |
+          sudo apt install -y maven
+          cd t/lib/dubbo-backend
+          mvn package
+          cd dubbo-backend-provider/target
+          java -Djava.net.preferIPv4Stack=true -jar dubbo-demo-provider.one-jar.jar > /tmp/java.log &
 
       - name: Linux Install
-        if: matrix.platform == 'ubuntu-18.04'
-        run: sudo ./.travis/${{ matrix.os_name }}_runner.sh do_install
+        run: |
+            sudo --preserve-env=OPENRESTY_VERSION \
+            ./ci/${{ matrix.os_name }}_runner.sh do_install
 
       - name: Linux Script
-        if: matrix.platform == 'ubuntu-18.04'
-        run: sudo ./.travis/${{ matrix.os_name }}_runner.sh script
-
-#       - name: Linux After success
-#         if: matrix.platform == 'ubuntu-18.04'
-#         run: sudo ./.travis/${{ matrix.os_name }}_runner.sh after_success
-#----------------------------------------------------------------------------
-      - name: MacOS Before install
-        if: matrix.platform == 'macos-latest'
-        run: ./.travis/${{ matrix.os_name }}_runner.sh before_install
-
-      - name: MacOS Install
-        if: matrix.platform == 'macos-latest'
-        run: ./.travis/${{ matrix.os_name }}_runner.sh do_install
-
-      - name: MacOS Script
-        if: matrix.platform == 'macos-latest'
-        run: ./.travis/${{ matrix.os_name }}_runner.sh script
-
-#       - name: MacOS After success
-#         if: matrix.platform == 'macos-latest'
-#         run: ./.travis/${{ matrix.os_name }}_runner.sh after_success
+        run: sudo ./ci/${{ matrix.os_name }}_runner.sh script

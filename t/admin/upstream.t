@@ -26,12 +26,14 @@ run_tests;
 
 __DATA__
 
-=== TEST 1: set upstream(id: 1)
+=== TEST 1: set upstream (use an id can't be referred by other route
+so that we can delete it later)
 --- config
     location /t {
         content_by_lua_block {
             local t = require("lib.test_admin").test
-            local code, body = t('/apisix/admin/upstreams/1',
+            local etcd = require("apisix.core.etcd")
+            local code, body = t('/apisix/admin/upstreams/admin_up',
                 ngx.HTTP_PUT,
                 [[{
                     "nodes": {
@@ -49,7 +51,7 @@ __DATA__
                             "type": "roundrobin",
                             "desc": "new upstream"
                         },
-                        "key": "/apisix/upstreams/1"
+                        "key": "/apisix/upstreams/admin_up"
                     },
                     "action": "set"
                 }]]
@@ -57,6 +59,12 @@ __DATA__
 
             ngx.status = code
             ngx.say(body)
+
+            local res = assert(etcd.get('/upstreams/admin_up'))
+            local create_time = res.body.node.value.create_time
+            assert(create_time ~= nil, "create_time is nil")
+            local update_time = res.body.node.value.update_time
+            assert(update_time ~= nil, "update_time is nil")
         }
     }
 --- request
@@ -68,12 +76,12 @@ passed
 
 
 
-=== TEST 2: get upstream(id: 1)
+=== TEST 2: get upstream
 --- config
     location /t {
         content_by_lua_block {
             local t = require("lib.test_admin").test
-            local code, body = t('/apisix/admin/upstreams/1',
+            local code, body = t('/apisix/admin/upstreams/admin_up',
                  ngx.HTTP_GET,
                  nil,
                 [[{
@@ -85,7 +93,7 @@ passed
                             "type": "roundrobin",
                             "desc": "new upstream"
                         },
-                        "key": "/apisix/upstreams/1"
+                        "key": "/apisix/upstreams/admin_up"
                     },
                     "action": "get"
                 }]]
@@ -104,12 +112,12 @@ passed
 
 
 
-=== TEST 3: delete upstream(id: 1)
+=== TEST 3: delete upstream
 --- config
     location /t {
         content_by_lua_block {
             local t = require("lib.test_admin").test
-            local code, message = t('/apisix/admin/upstreams/1',
+            local code, message = t('/apisix/admin/upstreams/admin_up',
                  ngx.HTTP_DELETE,
                  nil,
                  [[{
@@ -158,6 +166,7 @@ GET /t
     location /t {
         content_by_lua_block {
             local t = require("lib.test_admin").test
+            local etcd = require("apisix.core.etcd")
             local code, message, res = t('/apisix/admin/upstreams',
                  ngx.HTTP_POST,
                  [[{
@@ -188,6 +197,12 @@ GET /t
             ngx.say("[push] code: ", code, " message: ", message)
 
             local id = string.sub(res.node.key, #"/apisix/upstreams/" + 1)
+            local res = assert(etcd.get('/upstreams/' .. id))
+            local create_time = res.body.node.value.create_time
+            assert(create_time ~= nil, "create_time is nil")
+            local update_time = res.body.node.value.update_time
+            assert(update_time ~= nil, "update_time is nil")
+
             code, message = t('/apisix/admin/upstreams/' .. id,
                  ngx.HTTP_DELETE,
                  nil,
@@ -208,38 +223,7 @@ GET /t
 
 
 
-=== TEST 6: empty nodes
---- config
-    location /t {
-        content_by_lua_block {
-            local core = require("apisix.core")
-            local t = require("lib.test_admin").test
-            local code, message, res = t('/apisix/admin/upstreams/1',
-                 ngx.HTTP_PUT,
-                 [[{
-                    "nodes": {},
-                    "type": "roundrobin"
-                }]]
-                )
-
-            if code ~= 200 then
-                ngx.status = code
-                ngx.print(message)
-                return
-            end
-
-            ngx.say("[push] code: ", code, " message: ", message)
-        }
-    }
---- request
-GET /t
---- error_code: 400
---- response_body
-{"error_msg":"invalid configuration: property \"nodes\" validation failed: object matches none of the requireds"}
-
-
-
-=== TEST 7: invalid upstream id in uri
+=== TEST 6: invalid upstream id in uri
 --- config
     location /t {
         content_by_lua_block {
@@ -265,7 +249,7 @@ GET /t
 
 
 
-=== TEST 8: different id
+=== TEST 7: different id
 --- config
     location /t {
         content_by_lua_block {
@@ -295,7 +279,7 @@ GET /t
 
 
 
-=== TEST 9: id in the rule
+=== TEST 8: id in the rule
 --- config
     location /t {
         content_by_lua_block {
@@ -336,7 +320,7 @@ passed
 
 
 
-=== TEST 10: integer id less than 1
+=== TEST 9: integer id less than 1
 --- config
     location /t {
         content_by_lua_block {
@@ -366,7 +350,7 @@ GET /t
 
 
 
-=== TEST 11: invalid upstream id: string value
+=== TEST 10: invalid upstream id: string value
 --- config
     location /t {
         content_by_lua_block {
@@ -396,7 +380,7 @@ GET /t
 
 
 
-=== TEST 12: no additional properties is valid
+=== TEST 11: additional properties is valid
 --- config
     location /t {
         content_by_lua_block {
@@ -409,25 +393,25 @@ GET /t
                         "127.0.0.1:8080": 1
                     },
                     "type": "roundrobin",
-                    "invalid_property": "/index.html"
+                    "_service_name": "xyz",
+                    "_discovery_type": "nacos"
                 }]]
                 )
 
             ngx.status = code
-            ngx.print(body)
+            ngx.say(body)
         }
     }
 --- request
 GET /t
---- error_code: 400
 --- response_body
-{"error_msg":"invalid configuration: additional properties forbidden, found invalid_property"}
+passed
 --- no_error_log
 [error]
 
 
 
-=== TEST 13: set upstream(type: chash)
+=== TEST 12: set upstream(type: chash)
 --- config
     location /t {
         content_by_lua_block {
@@ -469,7 +453,7 @@ passed
 
 
 
-=== TEST 14: invalid type
+=== TEST 13: unknown type
 --- config
     location /t {
         content_by_lua_block {
@@ -481,7 +465,7 @@ passed
                     "nodes": {
                         "127.0.0.1:8080": 1
                     },
-                    "type": "invalid_type"
+                    "type": "unknown"
                 }]]
                 )
 
@@ -491,15 +475,14 @@ passed
     }
 --- request
 GET /t
---- error_code: 400
---- response_body
-{"error_msg":"invalid configuration: property \"type\" validation failed: matches non of the enum values"}
+--- response_body chomp
+passed
 --- no_error_log
 [error]
 
 
 
-=== TEST 15: invalid weight of node
+=== TEST 14: invalid weight of node
 --- config
     location /t {
         content_by_lua_block {
@@ -529,7 +512,7 @@ GET /t
 
 
 
-=== TEST 16: invalid weight of node
+=== TEST 15: invalid weight of node
 --- config
     location /t {
         content_by_lua_block {
@@ -559,7 +542,7 @@ GET /t
 
 
 
-=== TEST 17: set upstream (missing key)
+=== TEST 16: set upstream (missing key)
 --- config
     location /t {
         content_by_lua_block {
@@ -588,7 +571,7 @@ GET /t
 
 
 
-=== TEST 18: wrong upstream id, do not need it
+=== TEST 17: wrong upstream id, do not need it
 --- config
     location /t {
         content_by_lua_block {
@@ -617,7 +600,7 @@ GET /t
 
 
 
-=== TEST 19: wrong upstream id, do not need it
+=== TEST 18: wrong upstream id, do not need it
 --- config
     location /t {
         content_by_lua_block {
@@ -642,939 +625,5 @@ GET /t
 --- error_code: 400
 --- response_body
 {"error_msg":"wrong upstream id, do not need it"}
---- no_error_log
-[error]
-
-
-
-=== TEST 20: patch upstream(whole)
---- config
-    location /t {
-        content_by_lua_block {
-            local t = require("lib.test_admin").test
-            local code, body = t('/apisix/admin/upstreams/1',
-                ngx.HTTP_PATCH,
-                [[{
-                    "nodes": {
-                        "127.0.0.1:8080": 1
-                    },
-                    "type": "roundrobin",
-                    "desc": "new upstream"
-                }]],
-                [[{
-                    "node": {
-                        "value": {
-                            "nodes": {
-                                "127.0.0.1:8080": 1
-                            },
-                            "type": "roundrobin",
-                            "desc": "new upstream"
-                        },
-                        "key": "/apisix/upstreams/1"
-                    },
-                    "action": "set"
-                }]]
-            )
-
-            ngx.status = code
-            ngx.say(body)
-        }
-    }
---- request
-GET /t
---- response_body
-passed
---- no_error_log
-[error]
-
-
-
-=== TEST 21: patch upstream(new desc)
---- config
-    location /t {
-        content_by_lua_block {
-            local t = require("lib.test_admin").test
-            local code, body = t('/apisix/admin/upstreams/1',
-                ngx.HTTP_PATCH,
-                [[{
-                    "desc": "new 21 upstream"
-                }]],
-                [[{
-                    "node": {
-                        "value": {
-                            "nodes": {
-                                "127.0.0.1:8080": 1
-                            },
-                            "type": "roundrobin",
-                            "desc": "new 21 upstream"
-                        },
-                        "key": "/apisix/upstreams/1"
-                    },
-                    "action": "set"
-                }]]
-            )
-
-            ngx.status = code
-            ngx.say(body)
-        }
-    }
---- request
-GET /t
---- response_body
-passed
---- no_error_log
-[error]
-
-
-
-=== TEST 22: patch upstream(new nodes)
---- config
-    location /t {
-        content_by_lua_block {
-            local t = require("lib.test_admin").test
-            local code, body = t('/apisix/admin/upstreams/1',
-                ngx.HTTP_PATCH,
-                [[{
-                    "nodes": {
-                        "127.0.0.1:8081": 3,
-                        "127.0.0.1:8082": 4
-                    }
-                }]],
-                [[{
-                    "node": {
-                        "value": {
-                            "nodes": {
-                                "127.0.0.1:8080": 1,
-                                "127.0.0.1:8081": 3,
-                                "127.0.0.1:8082": 4
-                            },
-                            "type": "roundrobin",
-                            "desc": "new 21 upstream"
-                        }
-                    }
-                }]]
-            )
-
-            ngx.status = code
-            ngx.say(body)
-        }
-    }
---- request
-GET /t
---- response_body
-passed
---- no_error_log
-[error]
-
-
-
-=== TEST 23: patch upstream(weight is 0)
---- config
-    location /t {
-        content_by_lua_block {
-            local t = require("lib.test_admin").test
-            local code, body = t('/apisix/admin/upstreams/1',
-                ngx.HTTP_PATCH,
-                [[{
-                    "nodes": {
-                        "127.0.0.1:8081": 3,
-                        "127.0.0.1:8082": 0
-                    }
-                }]],
-                [[{
-                    "node": {
-                        "value": {
-                            "nodes": {
-                                "127.0.0.1:8081": 3,
-                                "127.0.0.1:8082": 0
-                            },
-                            "type": "roundrobin",
-                            "desc": "new 21 upstream"
-                        }
-                    }
-                }]]
-            )
-
-            ngx.status = code
-            ngx.say(body)
-        }
-    }
---- request
-GET /t
---- response_body
-passed
---- no_error_log
-[error]
-
-
-
-=== TEST 24: patch upstream(whole - sub path)
---- config
-    location /t {
-        content_by_lua_block {
-            local t = require("lib.test_admin").test
-            local code, body = t('/apisix/admin/upstreams/1/',
-                ngx.HTTP_PATCH,
-                [[{
-                    "nodes": {
-                        "127.0.0.1:8080": 1
-                    },
-                    "type": "roundrobin",
-                    "desc": "new upstream 24"
-                }]],
-                [[{
-                    "node": {
-                        "value": {
-                            "nodes": {
-                                "127.0.0.1:8080": 1
-                            },
-                            "type": "roundrobin",
-                            "desc": "new upstream 24"
-                        },
-                        "key": "/apisix/upstreams/1"
-                    },
-                    "action": "set"
-                }]]
-            )
-
-            ngx.status = code
-            ngx.say(body)
-        }
-    }
---- request
-GET /t
---- response_body
-passed
---- no_error_log
-[error]
-
-
-
-=== TEST 25: patch upstream(new desc - sub path)
---- config
-    location /t {
-        content_by_lua_block {
-            local t = require("lib.test_admin").test
-            local code, body = t('/apisix/admin/upstreams/1/desc',
-                ngx.HTTP_PATCH,
-                '"new 25 upstream"',
-                [[{
-                    "node": {
-                        "value": {
-                            "nodes": {
-                                "127.0.0.1:8080": 1
-                            },
-                            "type": "roundrobin",
-                            "desc": "new 25 upstream"
-                        },
-                        "key": "/apisix/upstreams/1"
-                    },
-                    "action": "set"
-                }]]
-            )
-
-            ngx.status = code
-            ngx.say(body)
-        }
-    }
---- request
-GET /t
---- response_body
-passed
---- no_error_log
-[error]
-
-
-
-=== TEST 26: patch upstream(new nodes)
---- config
-    location /t {
-        content_by_lua_block {
-            local t = require("lib.test_admin").test
-            local code, body = t('/apisix/admin/upstreams/1/nodes',
-                ngx.HTTP_PATCH,
-                [[{
-                    "127.0.0.6:8081": 3,
-                    "127.0.0.7:8082": 4
-                }]],
-                [[{
-                    "node": {
-                        "value": {
-                            "nodes": {
-                                "127.0.0.6:8081": 3,
-                                "127.0.0.7:8082": 4
-                            },
-                            "type": "roundrobin",
-                            "desc": "new 25 upstream"
-                        }
-                    }
-                }]]
-            )
-
-            ngx.status = code
-            ngx.say(body)
-        }
-    }
---- request
-GET /t
---- response_body
-passed
---- no_error_log
-[error]
-
-
-
-=== TEST 27: patch upstream(weight is 0 - sub path)
---- config
-    location /t {
-        content_by_lua_block {
-            local t = require("lib.test_admin").test
-            local code, body = t('/apisix/admin/upstreams/1/nodes',
-                ngx.HTTP_PATCH,
-                [[{
-                    "127.0.0.7:8081": 0,
-                    "127.0.0.8:8082": 4
-                }]],
-                [[{
-                    "node": {
-                        "value": {
-                            "nodes": {
-                                "127.0.0.7:8081": 0,
-                                "127.0.0.8:8082": 4
-                            },
-                            "type": "roundrobin",
-                            "desc": "new 25 upstream"
-                        }
-                    }
-                }]]
-            )
-
-            ngx.status = code
-            ngx.say(body)
-        }
-    }
---- request
-GET /t
---- response_body
-passed
---- no_error_log
-[error]
-
-
-
-=== TEST 28: set upstream(type: chash)
---- config
-    location /t {
-        content_by_lua_block {
-            local t = require("lib.test_admin").test
-            local code, body = t('/apisix/admin/upstreams/1',
-                 ngx.HTTP_PUT,
-                 [[{
-                    "key": "server_name",
-                    "nodes": {
-                        "127.0.0.1:8080": 1
-                    },
-                    "type": "chash"
-                }]]
-                )
-
-            ngx.status = code
-            ngx.say(body)
-        }
-    }
---- request
-GET /t
---- response_body
-passed
---- no_error_log
-[error]
-
-
-
-=== TEST 29:  wrong upstream key, hash_on default vars
---- config
-    location /t {
-        content_by_lua_block {
-            local t = require("lib.test_admin").test
-            local code, body = t('/apisix/admin/upstreams/1',
-                ngx.HTTP_PUT,
-                [[{
-                    "nodes": {
-                        "127.0.0.1:8080": 1,
-                        "127.0.0.1:8081": 2
-                    },
-                    "type": "chash",
-                    "key": "not_support",
-                    "desc": "new upstream"
-                }]]
-                )
-
-            ngx.status = code
-            ngx.print(body)
-        }
-    }
---- request
-GET /t
---- error_code: 400
---- response_body
-{"error_msg":"invalid configuration: failed to match pattern \"^((uri|server_name|server_addr|request_uri|remote_port|remote_addr|query_string|host|hostname)|arg_[0-9a-zA-z_-]+)$\" with \"not_support\""}
---- no_error_log
-[error]
-
-
-
-=== TEST 30: set upstream with args(type: chash)
---- config
-    location /t {
-        content_by_lua_block {
-            local t = require("lib.test_admin").test
-            local code, body = t('/apisix/admin/upstreams/1',
-                 ngx.HTTP_PUT,
-                 [[{
-                    "key": "arg_device_id",
-                    "nodes": {
-                        "127.0.0.1:8080": 1
-                    },
-                    "type": "chash",
-                    "desc": "new chash upstream"
-                }]]
-                )
-
-            ngx.status = code
-            ngx.say(body)
-        }
-    }
---- request
-GET /t
---- response_body
-passed
---- no_error_log
-[error]
-
-
-
-=== TEST 31: set upstream(type: chash)
---- config
-    location /t {
-        content_by_lua_block {
-            local t = require("lib.test_admin").test
-            local code, body = t('/apisix/admin/upstreams/1',
-                 ngx.HTTP_PUT,
-                 [[{
-                    "key": "server_name",
-                    "nodes": {
-                        "127.0.0.1:8080": 1
-                    },
-                    "type": "chash"
-                }]]
-                )
-
-            ngx.status = code
-            ngx.say(body)
-        }
-    }
---- request
-GET /t
---- response_body
-passed
---- no_error_log
-[error]
-
-
-
-=== TEST 32:  wrong upstream key, hash_on default vars
---- config
-    location /t {
-        content_by_lua_block {
-            local t = require("lib.test_admin").test
-            local code, body = t('/apisix/admin/upstreams/1',
-                ngx.HTTP_PUT,
-                [[{
-                    "nodes": {
-                        "127.0.0.1:8080": 1,
-                        "127.0.0.1:8081": 2
-                    },
-                    "type": "chash",
-                    "key": "not_support",
-                    "desc": "new upstream"
-                }]]
-                )
-
-            ngx.status = code
-            ngx.print(body)
-        }
-    }
---- request
-GET /t
---- error_code: 400
---- response_body
-{"error_msg":"invalid configuration: failed to match pattern \"^((uri|server_name|server_addr|request_uri|remote_port|remote_addr|query_string|host|hostname)|arg_[0-9a-zA-z_-]+)$\" with \"not_support\""}
---- no_error_log
-[error]
-
-
-
-=== TEST 33: set upstream with args(type: chash)
---- config
-    location /t {
-        content_by_lua_block {
-            local t = require("lib.test_admin").test
-            local code, body = t('/apisix/admin/upstreams/1',
-                 ngx.HTTP_PUT,
-                 [[{
-                    "key": "arg_device_id",
-                    "nodes": {
-                        "127.0.0.1:8080": 1
-                    },
-                    "type": "chash",
-                    "desc": "new chash upstream"
-                }]]
-                )
-
-            ngx.status = code
-            ngx.say(body)
-        }
-    }
---- request
-GET /t
---- response_body
-passed
---- no_error_log
-[error]
-
-
-
-=== TEST 34: type chash, hash_on: vars
---- config
-    location /t {
-        content_by_lua_block {
-            local t = require("lib.test_admin").test
-            local code, body = t('/apisix/admin/upstreams/1',
-                 ngx.HTTP_PUT,
-                 [[{
-                    "key": "arg_device_id",
-                    "nodes": {
-                        "127.0.0.1:8080": 1
-                    },
-                    "type": "chash",
-                    "hash_on": "vars",
-                    "desc": "new chash upstream"
-                }]]
-                )
-
-            ngx.status = code
-            ngx.say(body)
-        }
-    }
---- request
-GET /t
---- response_body
-passed
---- no_error_log
-[error]
-
-
-
-=== TEST 35: type chash, hash_on: header, header name with '_', underscores_in_headers on
---- config
-    location /t {
-        content_by_lua_block {
-            local t = require("lib.test_admin").test
-            local code, body = t('/apisix/admin/upstreams/1',
-                 ngx.HTTP_PUT,
-                 [[{
-                    "key": "custom_header",
-                    "nodes": {
-                        "127.0.0.1:8080": 1
-                    },
-                    "type": "chash",
-                    "hash_on": "header",
-                    "desc": "new chash upstream"
-                }]]
-                )
-
-            ngx.status = code
-            ngx.say(body)
-        }
-    }
---- request
-GET /t
---- response_body
-passed
---- no_error_log
-[error]
-
-
-
-=== TEST 36: type chash, hash_on: header, header name with invalid character
---- config
-    location /t {
-        content_by_lua_block {
-            local t = require("lib.test_admin").test
-            local code, body = t('/apisix/admin/upstreams/1',
-                 ngx.HTTP_PUT,
-                 [[{
-                    "key": "$#^@",
-                    "nodes": {
-                        "127.0.0.1:8080": 1
-                    },
-                    "type": "chash",
-                    "hash_on": "header",
-                    "desc": "new chash upstream"
-                }]]
-                )
-
-            ngx.status = code
-            ngx.print(body)
-        }
-    }
---- request
-GET /t
---- error_code: 400
---- response_body
-{"error_msg":"invalid configuration: failed to match pattern \"^[a-zA-Z0-9-_]+$\" with \"$#^@\""}
---- no_error_log
-[error]
-
-
-
-=== TEST 37: type chash, hash_on: cookie
---- config
-    location /t {
-        content_by_lua_block {
-            local t = require("lib.test_admin").test
-            local code, body = t('/apisix/admin/upstreams/1',
-                 ngx.HTTP_PUT,
-                 [[{
-                    "key": "custom_cookie",
-                    "nodes": {
-                        "127.0.0.1:8080": 1
-                    },
-                    "type": "chash",
-                    "hash_on": "cookie",
-                    "desc": "new chash upstream"
-                }]]
-                )
-
-            ngx.status = code
-            ngx.say(body)
-        }
-    }
---- request
-GET /t
---- response_body
-passed
---- no_error_log
-[error]
-
-
-
-=== TEST 38: type chash, hash_on: cookie, cookie name with invalid character
---- config
-    location /t {
-        content_by_lua_block {
-            local t = require("lib.test_admin").test
-            local code, body = t('/apisix/admin/upstreams/1',
-                 ngx.HTTP_PUT,
-                 [[{
-                    "key": "$#^@abc",
-                    "nodes": {
-                        "127.0.0.1:8080": 1
-                    },
-                    "type": "chash",
-                    "hash_on": "cookie",
-                    "desc": "new chash upstream"
-                }]]
-                )
-
-            ngx.status = code
-            ngx.print(body)
-        }
-    }
---- request
-GET /t
---- error_code: 400
---- response_body
-{"error_msg":"invalid configuration: failed to match pattern \"^[a-zA-Z0-9-_]+$\" with \"$#^@abc\""}
---- no_error_log
-[error]
-
-
-
-=== TEST 39: type chash, hash_on: consumer, do not need upstream key
---- config
-    location /t {
-        content_by_lua_block {
-            local t = require("lib.test_admin").test
-            local code, body = t('/apisix/admin/upstreams/1',
-                 ngx.HTTP_PUT,
-                 [[{
-                    "nodes": {
-                        "127.0.0.1:8080": 1
-                    },
-                    "type": "chash",
-                    "hash_on": "consumer",
-                    "desc": "new chash upstream"
-                }]]
-                )
-
-            ngx.status = code
-            ngx.say(body)
-        }
-    }
---- request
-GET /t
---- response_body
-passed
---- no_error_log
-[error]
-
-
-
-=== TEST 40: type chash, hash_on: consumer, set key but invalid
---- config
-    location /t {
-        content_by_lua_block {
-            local t = require("lib.test_admin").test
-            local code, body = t('/apisix/admin/upstreams/1',
-                 ngx.HTTP_PUT,
-                 [[{
-                    "nodes": {
-                        "127.0.0.1:8080": 1
-                    },
-                    "type": "chash",
-                    "hash_on": "consumer",
-                    "key": "invalid-key",
-                    "desc": "new chash upstream"
-                }]]
-                )
-
-            ngx.status = code
-            ngx.say(body)
-        }
-    }
---- request
-GET /t
---- response_body
-passed
---- no_error_log
-[error]
-
-
-
-=== TEST 41: type chash, invalid hash_on type
---- config
-    location /t {
-        content_by_lua_block {
-            local t = require("lib.test_admin").test
-            local code, body = t('/apisix/admin/upstreams/1',
-                 ngx.HTTP_PUT,
-                 [[{
-                    "key": "dsadas",
-                    "nodes": {
-                        "127.0.0.1:8080": 1
-                    },
-                    "type": "chash",
-                    "hash_on": "aabbcc",
-                    "desc": "new chash upstream"
-                }]]
-                )
-
-            ngx.status = code
-            ngx.print(body)
-        }
-    }
---- request
-GET /t
---- error_code: 400
---- response_body
-{"error_msg":"invalid configuration: property \"hash_on\" validation failed: matches non of the enum values"}
---- no_error_log
-[error]
-
-
-
-=== TEST 42: set upstream(id: 1 + name: test name)
---- config
-    location /t {
-        content_by_lua_block {
-            local t = require("lib.test_admin").test
-            local code, body = t('/apisix/admin/upstreams/1',
-                ngx.HTTP_PUT,
-                [[{
-                    "nodes": {
-                        "127.0.0.1:8080": 1
-                    },
-                    "type": "roundrobin",
-                    "name": "test upstream name"
-                }]],
-                [[{
-                    "node": {
-                        "value": {
-                            "nodes": {
-                                "127.0.0.1:8080": 1
-                            },
-                            "type": "roundrobin",
-                            "name": "test upstream name"
-                        },
-                        "key": "/apisix/upstreams/1"
-                    },
-                    "action": "set"
-                }]]
-            )
-
-            ngx.status = code
-            ngx.say(body)
-        }
-    }
---- request
-GET /t
---- response_body
-passed
---- no_error_log
-[error]
-
-
-
-=== TEST 43: string id
---- config
-    location /t {
-        content_by_lua_block {
-            local t = require("lib.test_admin").test
-            local code, body = t('/apisix/admin/upstreams/a-b-c-ABC_0123',
-                ngx.HTTP_PUT,
-                [[{
-                    "nodes": {
-                        "127.0.0.1:8080": 1
-                    },
-                    "type": "roundrobin"
-                }]]
-            )
-            if code >= 300 then
-                ngx.status = code
-            end
-            ngx.say(body)
-        }
-    }
---- request
-GET /t
---- response_body
-passed
---- no_error_log
-[error]
-
-
-
-=== TEST 44: string id(delete)
---- config
-    location /t {
-        content_by_lua_block {
-            local t = require("lib.test_admin").test
-            local code, body = t('/apisix/admin/upstreams/a-b-c-ABC_0123',
-                ngx.HTTP_DELETE
-            )
-            if code >= 300 then
-                ngx.status = code
-            end
-            ngx.say(body)
-        }
-    }
---- request
-GET /t
---- response_body
-passed
---- no_error_log
-[error]
-
-
-
-=== TEST 45: invalid string id
---- config
-    location /t {
-        content_by_lua_block {
-            local t = require("lib.test_admin").test
-            local code, body = t('/apisix/admin/upstreams/*invalid',
-                ngx.HTTP_PUT,
-                [[{
-                    "nodes": {
-                        "127.0.0.1:8080": 1
-                    },
-                    "type": "roundrobin"
-                }]]
-            )
-            if code >= 300 then
-                ngx.status = code
-            end
-            ngx.print(body)
-        }
-    }
---- request
-GET /t
---- error_code: 400
---- response_body
-{"error_msg":"invalid configuration: property \"id\" validation failed: object matches none of the requireds"}
---- no_error_log
-[error]
-
-
-
-=== TEST 46: retries is 0
---- config
-    location /t {
-        content_by_lua_block {
-            local t = require("lib.test_admin").test
-            local code, body = t('/apisix/admin/upstreams/a-b-c-ABC_0123',
-                ngx.HTTP_PUT,
-                [[{
-                    "nodes": {
-                        "127.0.0.1:8080": 1,
-                        "127.0.0.1:8090": 1
-                    },
-                    "retries": 0,
-                    "type": "roundrobin"
-                }]]
-            )
-            if code >= 300 then
-                ngx.status = code
-            end
-            ngx.say(body)
-        }
-    }
---- request
-GET /t
---- response_body
-passed
---- no_error_log
-[error]
-
-
-
-=== TEST 47: retries is -1 (INVALID)
---- config
-    location /t {
-        content_by_lua_block {
-            local t = require("lib.test_admin").test
-            local code, body = t('/apisix/admin/upstreams/a-b-c-ABC_0123',
-                ngx.HTTP_PUT,
-                [[{
-                    "nodes": {
-                        "127.0.0.1:8080": 1,
-                        "127.0.0.1:8090": 1
-                    },
-                    "retries": -1,
-                    "type": "roundrobin"
-                }]]
-            )
-            if code >= 300 then
-                ngx.status = code
-            end
-            ngx.print(body)
-        }
-    }
---- request
-GET /t
---- error_code: 400
---- response_body
-{"error_msg":"invalid configuration: property \"retries\" validation failed: expected -1 to be greater than 0"}
 --- no_error_log
 [error]

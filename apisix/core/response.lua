@@ -16,8 +16,15 @@
 --
 local encode_json = require("cjson.safe").encode
 local ngx = ngx
+local arg = ngx.arg
 local ngx_print = ngx.print
 local ngx_header = ngx.header
+local ngx_add_header
+if ngx.config.subsystem == "http" then
+    local ngx_resp = require "ngx.resp"
+    ngx_add_header = ngx_resp.add_header
+end
+
 local error = error
 local select = select
 local type = type
@@ -85,7 +92,7 @@ function _M.say(...)
 end
 
 
-function _M.set_header(...)
+local function set_header(append, ...)
     if ngx.headers_sent then
       error("headers have already been sent", 2)
     end
@@ -94,25 +101,104 @@ function _M.set_header(...)
     if count == 1 then
         local headers = select(1, ...)
         if type(headers) ~= "table" then
-            error("should be a table if only one argument", 2)
+            -- response.set_header(name, nil)
+            ngx_header[headers] = nil
+            return
         end
 
         for k, v in pairs(headers) do
-            ngx_header[k] = v
+            if append then
+                ngx_add_header(k, v)
+            else
+                ngx_header[k] = v
+            end
         end
 
         return
     end
 
     for i = 1, count, 2 do
-        ngx_header[select(i, ...)] = select(i + 1, ...)
+        if append then
+            ngx_add_header(select(i, ...), select(i + 1, ...))
+        else
+            ngx_header[select(i, ...)] = select(i + 1, ...)
+        end
     end
 end
 
 
+function _M.set_header(...)
+    set_header(false, ...)
+end
+
+
+function _M.add_header(...)
+    set_header(true, ...)
+end
+
+
 function _M.get_upstream_status(ctx)
-    -- $upstream_status maybe including mutiple status, only need the last one
+    -- $upstream_status maybe including multiple status, only need the last one
     return tonumber(str_sub(ctx.var.upstream_status or "", -3))
 end
+
+
+function _M.clear_header_as_body_modified()
+    ngx.header.content_length = nil
+    -- in case of upstream content is compressed content
+    ngx.header.content_encoding = nil
+
+    -- clear cache identifier
+    ngx.header.last_modified = nil
+    ngx.header.etag = nil
+end
+
+
+-- Hold body chunks and return the final body once all chunks have been read.
+-- Usage:
+-- function _M.body_filter(conf, ctx)
+--  local final_body = core.response.hold_body_chunk(ctx)
+--  if not final_body then
+--      return
+--  end
+--  final_body = transform(final_body)
+--  ngx.arg[1] = final_body
+--  ...
+function _M.hold_body_chunk(ctx, hold_the_copy)
+    local body_buffer
+    local chunk, eof = arg[1], arg[2]
+    if eof then
+        body_buffer = ctx._body_buffer
+        if not body_buffer then
+            return chunk
+        end
+
+        body_buffer = concat_tab(body_buffer, "", 1, body_buffer.n)
+        ctx._body_buffer = nil
+        return body_buffer
+    end
+
+    if type(chunk) == "string" and chunk ~= "" then
+        body_buffer = ctx._body_buffer
+        if not body_buffer then
+            body_buffer = {
+                chunk,
+                n = 1
+            }
+            ctx._body_buffer = body_buffer
+        else
+            local n = body_buffer.n + 1
+            body_buffer.n = n
+            body_buffer[n] = chunk
+        end
+    end
+
+    if not hold_the_copy then
+        -- flush the origin body chunk
+        arg[1] = nil
+    end
+    return nil
+end
+
 
 return _M

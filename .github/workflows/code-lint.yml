@@ -1,0 +1,30 @@
+name: Code Lint
+
+on:
+  pull_request:
+    branches: [master, 'release/**']
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+    - uses: actions/checkout@v2.4.0
+    - name: Install
+      run: |
+        . ./ci/common.sh
+        export_or_prefix
+        export OPENRESTY_VERSION=default
+
+        ./utils/linux-install-openresty.sh
+        ./utils/linux-install-luarocks.sh
+        sudo luarocks install luacheck
+
+    - name: Script
+      run: |
+        . ./ci/common.sh
+        export_or_prefix
+        make lint

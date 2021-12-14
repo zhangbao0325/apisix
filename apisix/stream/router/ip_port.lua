@@ -15,28 +15,37 @@
 -- limitations under the License.
 --
 local core      = require("apisix.core")
-local ipairs    = ipairs
+local core_ip  = require("apisix.core.ip")
+local config_util = require("apisix.core.config_util")
+local stream_plugin_checker = require("apisix.plugin").stream_plugin_checker
+local router_new = require("apisix.utils.router").new
+local apisix_ssl = require("apisix.ssl")
 local error     = error
-local ngx_exit  = ngx.exit
 local tonumber  = tonumber
+local ipairs = ipairs
+
 local user_routes
-
-
+local router_ver
+local tls_router
+local other_routes = {}
 local _M = {version = 0.1}
 
 
-local function match_opts(route, api_ctx)
-    local vars = api_ctx.var
 
+local function match_addrs(route, vars)
     -- todo: use resty-ipmatcher to support multiple ip address
-    if route.value.remote_addr and
-       route.value.remote_addr ~= vars.remote_addr then
-        return false
+    if route.value.remote_addr then
+        local ok, _ = route.value.remote_addr_matcher:match(vars.remote_addr)
+        if not ok then
+            return false
+        end
     end
 
-    if route.value.server_addr and
-       route.value.server_addr ~= vars.server_addr then
-        return false
+    if route.value.server_addr then
+        local ok, _ = route.value.server_addr_matcher:match(vars.server_addr)
+        if not ok then
+            return false
+        end
     end
 
     -- todo: use resty-ipmatcher to support multiple ip address
@@ -49,24 +58,124 @@ local function match_opts(route, api_ctx)
 end
 
 
-function _M.match(api_ctx)
-    local routes = _M.routes()
-    if not routes then
-        core.log.info("not find any user stream route")
-        return ngx_exit(200)
-    end
-    core.log.info("stream routes: ", core.json.delay_encode(routes))
+local create_router
+do
+    local sni_to_items = {}
+    local tls_routes = {}
 
-    for _, route in ipairs(routes) do
-        local hit = match_opts(route, api_ctx)
-        if hit then
-            api_ctx.matched_route = route
+    function create_router(items)
+        local tls_routes_idx = 1
+        local other_routes_idx = 1
+        core.table.clear(tls_routes)
+        core.table.clear(other_routes)
+        core.table.clear(sni_to_items)
+
+        for _, item in config_util.iterate_values(items) do
+            if item.value == nil then
+                goto CONTINUE
+            end
+
+            local route = item.value
+            if item.value.remote_addr then
+                item.value.remote_addr_matcher = core_ip.create_ip_matcher({item.value.remote_addr})
+            end
+            if item.value.server_addr then
+                item.value.server_addr_matcher = core_ip.create_ip_matcher({item.value.server_addr})
+            end
+            if not route.sni then
+                other_routes[other_routes_idx] = item
+                other_routes_idx = other_routes_idx + 1
+                goto CONTINUE
+            end
+
+            local sni_rev = route.sni:reverse()
+            local stored = sni_to_items[sni_rev]
+            if stored then
+                core.table.insert(stored, item)
+                goto CONTINUE
+            end
+
+            sni_to_items[sni_rev] = {item}
+            tls_routes[tls_routes_idx] = {
+                paths = sni_rev,
+                filter_fun = function (vars, opts, ctx)
+                    local items = sni_to_items[sni_rev]
+                    for _, route in ipairs(items) do
+                        local hit = match_addrs(route, vars)
+                        if hit then
+                            ctx.matched_route = route
+                            return true
+                        end
+                    end
+                    return false
+                end,
+                handler = function (ctx, sni_rev)
+                    -- done in the filter_fun
+                end
+            }
+            tls_routes_idx = tls_routes_idx + 1
+
+            ::CONTINUE::
+        end
+
+        if #tls_routes > 0 then
+            local router, err = router_new(tls_routes)
+            if not router then
+                return err
+            end
+
+            tls_router = router
+        end
+
+        return nil
+    end
+end
+
+
+do
+    local match_opts = {}
+
+    function _M.match(api_ctx)
+        if router_ver ~= user_routes.conf_version then
+            local err = create_router(user_routes.values)
+            if err then
+                return false, "failed to create router: " .. err
+            end
+
+            router_ver = user_routes.conf_version
+        end
+
+        local sni = apisix_ssl.server_name()
+        if sni and tls_router then
+            local sni_rev = sni:reverse()
+
+            core.table.clear(match_opts)
+            match_opts.vars = api_ctx.var
+
+            local _, err = tls_router:dispatch(sni_rev, match_opts, api_ctx)
+            if err then
+                return false, "failed to match TLS router: " .. err
+            end
+        end
+
+        if api_ctx.matched_route then
+            -- unlike the matcher for the SSL, it is fine to let
+            -- '*.x.com' to match 'a.b.x.com' as we don't care about
+            -- the certificate
             return true
         end
-    end
 
-    core.log.info("not hit any route")
-    return true
+        for _, route in ipairs(other_routes) do
+            local hit = match_addrs(route, api_ctx.var)
+            if hit then
+                api_ctx.matched_route = route
+                return true
+            end
+        end
+
+        core.log.info("not hit any route")
+        return true
+    end
 end
 
 
@@ -78,12 +187,35 @@ function _M.routes()
     return user_routes.values, user_routes.conf_version
 end
 
+local function stream_route_checker(item)
+    if item.plugins then
+        local err, message = stream_plugin_checker(item)
+        if not err then
+            return err, message
+        end
+    end
+    -- validate the address format when remote_address or server_address is not nil
+    if item.remote_addr then
+        if not core_ip.validate_cidr_or_ip(item.remote_addr) then
+            return false, "invalid remote_addr: " .. item.remote_addr
+        end
+    end
+    if item.server_addr then
+        if not core_ip.validate_cidr_or_ip(item.server_addr) then
+            return false, "invalid server_addr: " .. item.server_addr
+        end
+    end
+    return true
+end
+_M.stream_route_checker = stream_route_checker
+
 
 function _M.stream_init_worker(filter)
     local err
     user_routes, err = core.config.new("/stream_routes", {
             automatic = true,
             item_schema = core.schema.stream_route,
+            checker = stream_route_checker,
             filter = filter,
         })
 

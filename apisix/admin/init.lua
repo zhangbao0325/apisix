@@ -14,17 +14,24 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 --
-
+local require = require
 local core = require("apisix.core")
-local route = require("resty.radixtree")
+local route = require("apisix.utils.router")
 local plugin = require("apisix.plugin")
 local ngx = ngx
 local get_method = ngx.req.get_method
+local ngx_time = ngx.time
+local ngx_timer_at = ngx.timer.at
+local ngx_worker_id = ngx.worker.id
 local tonumber = tonumber
 local str_lower = string.lower
-local require = require
 local reload_event = "/apisix/admin/plugins/reload"
 local ipairs = ipairs
+local error = error
+local type = type
+local req_read_body = ngx.req.read_body
+local req_get_body_data = ngx.req.get_body_data
+
 local events
 local MAX_REQ_BODY = 1024 * 1024 * 1.5      -- 1.5 MiB
 
@@ -45,6 +52,8 @@ local resources = {
     proto           = require("apisix.admin.proto"),
     global_rules    = require("apisix.admin.global_rules"),
     stream_routes   = require("apisix.admin.stream_routes"),
+    plugin_metadata = require("apisix.admin.plugin_metadata"),
+    plugin_configs  = require("apisix.admin.plugin_config"),
 }
 
 
@@ -86,14 +95,36 @@ local function check_token(ctx)
 end
 
 
+local function strip_etcd_resp(data)
+    if type(data) == "table"
+        and data.header ~= nil
+        and data.header.revision ~= nil
+        and data.header.raft_term ~= nil
+    then
+        -- strip etcd data
+        data.header = nil
+        data.responses = nil
+        data.succeeded = nil
+
+        if data.node then
+            data.node.createdIndex = nil
+            data.node.modifiedIndex = nil
+        end
+    end
+
+    return data
+end
+
+
 local function run()
     local api_ctx = {}
     core.ctx.set_vars_meta(api_ctx)
+    ngx.ctx.api_ctx = api_ctx
 
     local ok, err = check_token(api_ctx)
     if not ok then
         core.log.warn("failed to check token: ", err)
-        core.response.exit(401)
+        core.response.exit(401, {error_msg = "failed to check token"})
     end
 
     local uri_segs = core.utils.split_uri(ngx.var.uri)
@@ -110,12 +141,12 @@ local function run()
 
     local resource = resources[seg_res]
     if not resource then
-        core.response.exit(404)
+        core.response.exit(404, {error_msg = "not found"})
     end
 
     local method = str_lower(get_method())
     if not resource[method] then
-        core.response.exit(404)
+        core.response.exit(404, {error_msg = "not found"})
     end
 
     local req_body, err = core.request.get_body(MAX_REQ_BODY)
@@ -126,9 +157,9 @@ local function run()
 
     if req_body then
         local data, err = core.json.decode(req_body)
-        if not data then
+        if err then
             core.log.error("invalid request body: ", req_body, " err: ", err)
-            core.response.exit(400, {error_msg = "invalid request body",
+            core.response.exit(400, {error_msg = "invalid request body: " .. err,
                                      req_body = req_body})
         end
 
@@ -146,6 +177,7 @@ local function run()
     local code, data = resource[method](seg_id, req_body, seg_sub_path,
                                         uri_args)
     if code then
+        data = strip_etcd_resp(data)
         core.response.exit(code, data)
     end
 end
@@ -154,18 +186,19 @@ end
 local function run_stream()
     local api_ctx = {}
     core.ctx.set_vars_meta(api_ctx)
+    ngx.ctx.api_ctx = api_ctx
 
     local local_conf = core.config.local_conf()
     if not local_conf.apisix.stream_proxy then
-        core.log.warn("stream mode is disabled, can not to add any stream ",
-                      "route")
-        core.response.exit(400)
+        core.log.warn("stream mode is disabled, can not add any stream ",
+                      "routes")
+        core.response.exit(400, {error_msg = "stream mode is disabled, " ..
+                                             "can not add stream routes"})
     end
 
     local ok, err = check_token(api_ctx)
     if not ok then
         core.log.warn("failed to check token: ", err)
-        core.response.exit(401)
     end
 
     local uri_segs = core.utils.split_uri(ngx.var.uri)
@@ -182,22 +215,22 @@ local function run_stream()
 
     local resource = resources[seg_res]
     if not resource then
-        core.response.exit(404)
+        core.response.exit(404, {error_msg = "not found"})
     end
 
     local method = str_lower(get_method())
     if not resource[method] then
-        core.response.exit(404)
+        core.response.exit(404, {error_msg = "not found"})
     end
 
-    ngx.req.read_body()
-    local req_body = ngx.req.get_body_data()
+    req_read_body()
+    local req_body = req_get_body_data()
 
     if req_body then
         local data, err = core.json.decode(req_body)
         if not data then
             core.log.error("invalid request body: ", req_body, " err: ", err)
-            core.response.exit(400, {error_msg = "invalid request body",
+            core.response.exit(400, {error_msg = "invalid request body: " .. err,
                                      req_body = req_body})
         end
 
@@ -215,6 +248,7 @@ local function run_stream()
     local code, data = resource[method](seg_id, req_body, seg_sub_path,
                                         uri_args)
     if code then
+        data = strip_etcd_resp(data)
         core.response.exit(code, data)
     end
 end
@@ -223,11 +257,12 @@ end
 local function get_plugins_list()
     local api_ctx = {}
     core.ctx.set_vars_meta(api_ctx)
+    ngx.ctx.api_ctx = api_ctx
 
     local ok, err = check_token(api_ctx)
     if not ok then
         core.log.warn("failed to check token: ", err)
-        core.response.exit(401)
+        core.response.exit(401, {error_msg = "failed to check token"})
     end
 
     local plugins = resources.plugins.get_plugins_list()
@@ -238,25 +273,106 @@ end
 local function post_reload_plugins()
     local api_ctx = {}
     core.ctx.set_vars_meta(api_ctx)
+    ngx.ctx.api_ctx = api_ctx
 
     local ok, err = check_token(api_ctx)
     if not ok then
         core.log.warn("failed to check token: ", err)
-        core.response.exit(401)
+        core.response.exit(401, {error_msg = "failed to check token"})
     end
 
-    local success, err = events.post(reload_event, get_method(), ngx.time())
+    local success, err = events.post(reload_event, get_method(), ngx_time())
     if not success then
-        core.response.exit(500, err)
+        core.response.exit(503, err)
     end
 
-    core.response.exit(200, success)
+    core.response.exit(200, "done")
+end
+
+
+local function plugins_eq(old, new)
+    local old_set = {}
+    for _, p in ipairs(old) do
+        old_set[p.name] = p
+    end
+
+    local new_set = {}
+    for _, p in ipairs(new) do
+        new_set[p.name] = p
+    end
+
+    return core.table.set_eq(old_set, new_set)
+end
+
+
+local function sync_local_conf_to_etcd(reset)
+    local local_conf = core.config.local_conf()
+
+    local plugins = {}
+    for _, name in ipairs(local_conf.plugins) do
+        core.table.insert(plugins, {
+            name = name,
+        })
+    end
+
+    for _, name in ipairs(local_conf.stream_plugins) do
+        core.table.insert(plugins, {
+            name = name,
+            stream = true,
+        })
+    end
+
+    if reset then
+        local res, err = core.etcd.get("/plugins")
+        if not res then
+            core.log.error("failed to get current plugins: ", err)
+            return
+        end
+
+        if res.status == 404 then
+            -- nothing need to be reset
+            return
+        end
+
+        if res.status ~= 200 then
+            core.log.error("failed to get current plugins, status: ", res.status)
+            return
+        end
+
+        local stored_plugins = res.body.node.value
+        local revision = res.body.node.modifiedIndex
+        if plugins_eq(stored_plugins, plugins) then
+            core.log.info("plugins not changed, don't need to reset")
+            return
+        end
+
+        core.log.warn("sync local conf to etcd")
+
+        local res, err = core.etcd.atomic_set("/plugins", plugins, nil, revision)
+        if not res then
+            core.log.error("failed to set plugins: ", err)
+        end
+
+        return
+    end
+
+    core.log.warn("sync local conf to etcd")
+
+    -- need to store all plugins name into one key so that it can be updated atomically
+    local res, err = core.etcd.set("/plugins", plugins)
+    if not res then
+        core.log.error("failed to set plugins: ", err)
+    end
 end
 
 
 local function reload_plugins(data, event, source, pid)
     core.log.info("start to hot reload plugins")
     plugin.load()
+
+    if ngx_worker_id() == 0 then
+        sync_local_conf_to_etcd()
+    end
 end
 
 
@@ -267,13 +383,13 @@ local uri_route = {
         handler = run,
     },
     {
-        paths = [[/apisix/admin/stream_routes*]],
+        paths = [[/apisix/admin/stream_routes/*]],
         methods = {"GET", "PUT", "POST", "DELETE", "PATCH"},
         handler = run_stream,
     },
     {
         paths = [[/apisix/admin/plugins/list]],
-        methods = {"GET", "PUT", "POST", "DELETE"},
+        methods = {"GET"},
         handler = get_plugins_list,
     },
     {
@@ -294,6 +410,21 @@ function _M.init_worker()
     events = require("resty.worker.events")
 
     events.register(reload_plugins, reload_event, "PUT")
+
+    if ngx_worker_id() == 0 then
+        local ok, err = ngx_timer_at(0, function(premature)
+            if premature then
+                return
+            end
+
+            -- try to reset the /plugins to the current configuration in the admin
+            sync_local_conf_to_etcd(true)
+        end)
+
+        if not ok then
+            error("failed to sync local configure to etcd: " .. err)
+        end
+    end
 end
 
 

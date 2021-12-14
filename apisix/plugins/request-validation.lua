@@ -17,17 +17,18 @@
 local core          = require("apisix.core")
 local plugin_name   = "request-validation"
 local ngx           = ngx
-local io           = io
 
 local schema = {
     type = "object",
     properties = {
+        header_schema = {type = "object"},
         body_schema = {type = "object"},
-        header_schema = {type = "object"}
+        rejected_code = {type = "integer", minimum = 200, maximum = 599, default = 400},
+        rejected_msg = {type = "string", minLength = 1, maxLength = 256}
     },
     anyOf = {
-        {required = {"body_schema"}},
-        {required = {"header_schema"}}
+        {required = {"header_schema"}},
+        {required = {"body_schema"}}
     }
 }
 
@@ -72,42 +73,35 @@ function _M.rewrite(conf)
         local ok, err = core.schema.check(conf.header_schema, headers)
         if not ok then
             core.log.error("req schema validation failed", err)
-            core.response.exit(400, err)
+            return conf.rejected_code, conf.rejected_msg or err
         end
     end
 
     if conf.body_schema then
-        ngx.req.read_body()
-        local req_body, error
-        local body = ngx.req.get_body_data()
-
+        local req_body
+        local body, err = core.request.get_body()
         if not body then
-            local filename = ngx.req.get_body_file()
-            if not filename then
-                return core.response.exit(500)
+            if err then
+                core.log.error("failed to get body: ", err)
             end
-            local fd = io.open(filename, 'rb')
-            if not fd then
-                return core.response.exit(500)
-            end
-            body = fd:read('*a')
+            return conf.rejected_code, conf.rejected_msg
         end
 
         if headers["content-type"] == "application/x-www-form-urlencoded" then
-            req_body, error = ngx.decode_args(body)
+            req_body, err = ngx.decode_args(body)
         else -- JSON as default
-            req_body, error = core.json.decode(body)
+            req_body, err = core.json.decode(body)
         end
 
         if not req_body then
-          core.log.error('failed to decode the req body', error)
-          return core.response.exit(400, error)
+          core.log.error('failed to decode the req body', err)
+          return conf.rejected_code, conf.rejected_msg or err
         end
 
         local ok, err = core.schema.check(conf.body_schema, req_body)
         if not ok then
           core.log.error("req schema validation failed", err)
-          return core.response.exit(400, err)
+          return conf.rejected_code, conf.rejected_msg or err
         end
     end
 end

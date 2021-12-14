@@ -17,7 +17,6 @@
 
 use t::APISIX 'no_plan';
 
-master_on();
 repeat_each(1);
 log_level('info');
 no_root_location();
@@ -28,7 +27,7 @@ run_tests();
 
 __DATA__
 
-=== TEST 1: set route(only passive)
+=== TEST 1: set route(passive)
 --- config
     location /t {
         content_by_lua_block {
@@ -56,7 +55,7 @@ __DATA__
                                     "interval": 100,
                                     "http_failures": 2
                                 }
-                            },
+                            },]] .. [[
                             "passive": {
                                 "healthy": {
                                     "http_statuses": [200, 201],
@@ -92,7 +91,7 @@ passed
         content_by_lua_block {
             ngx.sleep(1) -- wait for sync
 
-            local json_sort = require("lib.json_sort")
+            local json_sort = require("toolkit.json")
             local http = require("resty.http")
             local uri = "http://127.0.0.1:" .. ngx.var.server_port .. "/server_port"
 
@@ -119,3 +118,50 @@ GET /t
 {"200":5,"502":1}
 --- error_log
 (upstream#/apisix/routes/1) unhealthy HTTP increment (1/1)
+
+
+
+=== TEST 3: set route(only passive)
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin").test
+            local code, body = t('/apisix/admin/routes/1',
+                ngx.HTTP_PUT,
+                [[{
+                    "uri": "/server_port",
+                    "upstream": {
+                        "type": "roundrobin",
+                        "nodes": {
+                            "127.0.0.1:1980": 0,
+                            "127.0.0.1:1": 1
+                        },
+                        "retries": 0,
+                        "checks": {
+                            "passive": {
+                                "healthy": {
+                                    "http_statuses": [200, 201],
+                                    "successes": 3
+                                },
+                                "unhealthy": {
+                                    "http_statuses": [502],
+                                    "http_failures": 1,
+                                    "tcp_failures": 1
+                                }
+                            }
+                        }
+                    }
+                }]]
+                )
+
+            if code >= 300 then
+                ngx.status = code
+            end
+            ngx.print(body)
+        }
+    }
+--- request
+GET /t
+--- error_code: 400
+--- response_body
+{"error_msg":"invalid configuration: property \"upstream\" validation failed: property \"checks\" validation failed: object matches none of the requireds: [\"active\"] or [\"active\",\"passive\"]"}

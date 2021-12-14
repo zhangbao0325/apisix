@@ -15,6 +15,7 @@
 -- limitations under the License.
 --
 local core = require("apisix.core")
+local utils = require("apisix.admin.utils")
 local schema_plugin = require("apisix.admin.plugins").check_schema
 local type = type
 local tostring = tostring
@@ -68,10 +69,16 @@ function _M.put(id, conf)
     end
 
     local key = "/global_rules/" .. id
+
+    local ok, err = utils.inject_conf_with_prev_conf("global_rule", key, conf)
+    if not ok then
+        return 503, {error_msg = err}
+    end
+
     local res, err = core.etcd.set(key, conf)
     if not res then
         core.log.error("failed to put global rule[", key, "]: ", err)
-        return 500, {error_msg = err}
+        return 503, {error_msg = err}
     end
 
     return res.status, res.body
@@ -83,10 +90,10 @@ function _M.get(id)
     if id then
         key = key .. "/" .. id
     end
-    local res, err = core.etcd.get(key)
+    local res, err = core.etcd.get(key, not id)
     if not res then
         core.log.error("failed to get global rule[", key, "]: ", err)
-        return 500, {error_msg = err}
+        return 503, {error_msg = err}
     end
 
     return res.status, res.body
@@ -99,7 +106,7 @@ function _M.delete(id)
     local res, err = core.etcd.delete(key)
     if not res then
         core.log.error("failed to delete global rule[", key, "]: ", err)
-        return 500, {error_msg = err}
+        return 503, {error_msg = err}
     end
 
     return res.status, res.body
@@ -125,7 +132,7 @@ function _M.patch(id, conf, sub_path)
     local res_old, err = core.etcd.get(key)
     if not res_old then
         core.log.error("failed to get global rule [", key, "]: ", err)
-        return 500, {error_msg = err}
+        return 503, {error_msg = err}
     end
 
     if res_old.status ~= 200 then
@@ -135,6 +142,7 @@ function _M.patch(id, conf, sub_path)
                   core.json.delay_encode(res_old, true))
 
     local node_value = res_old.body.node.value
+    local modified_index = res_old.body.node.modifiedIndex
 
     if sub_path and sub_path ~= "" then
         local code, err, node_val = core.table.patch(node_value, sub_path, conf)
@@ -142,8 +150,10 @@ function _M.patch(id, conf, sub_path)
         if code then
             return code, err
         end
+        utils.inject_timestamp(node_value, nil, true)
     else
         node_value = core.table.merge(node_value, conf);
+        utils.inject_timestamp(node_value, nil, conf)
     end
 
     core.log.info("new conf: ", core.json.delay_encode(node_value, true))
@@ -153,11 +163,10 @@ function _M.patch(id, conf, sub_path)
         return 400, err
     end
 
-    -- TODO: this is not safe, we need to use compare-set
-    local res, err = core.etcd.set(key, node_value)
+    local res, err = core.etcd.atomic_set(key, node_value, nil, modified_index)
     if not res then
         core.log.error("failed to set new global rule[", key, "]: ", err)
-        return 500, {error_msg = err}
+        return 503, {error_msg = err}
     end
 
     return res.status, res.body

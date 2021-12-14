@@ -20,7 +20,12 @@ local lrucache = require("apisix.core.lrucache")
 local cached_validator = lrucache.new({count = 1000, ttl = 0})
 local pcall = pcall
 
-local _M = {version = 0.3}
+local _M = {
+    version = 0.3,
+
+    TYPE_CONSUMER = 1,
+    TYPE_METADATA = 2,
+}
 
 
 local function create_validator(schema)

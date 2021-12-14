@@ -14,31 +14,51 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 --
-local core = require("apisix.core")
-local log_util = require("apisix.utils.log-util")
-local batch_processor = require("apisix.utils.batch-processor")
-local plugin_name = "http-logger"
-local ngx = ngx
+
+local bp_manager_mod  = require("apisix.utils.batch-processor-manager")
+local log_util        = require("apisix.utils.log-util")
+local core            = require("apisix.core")
+local http            = require("resty.http")
+local url             = require("net.url")
+local plugin          = require("apisix.plugin")
+
+local ngx      = ngx
 local tostring = tostring
-local http = require "resty.http"
-local url = require "net.url"
-local buffers = {}
+local ipairs   = ipairs
+
+local plugin_name = "http-logger"
+local batch_processor_manager = bp_manager_mod.new("http logger")
 
 local schema = {
     type = "object",
     properties = {
-        uri = {type = "string"},
+        uri = core.schema.uri_def,
         auth_header = {type = "string", default = ""},
         timeout = {type = "integer", minimum = 1, default = 3},
-        name = {type = "string", default = "http logger"},
-        max_retry_count = {type = "integer", minimum = 0, default = 0},
-        retry_delay = {type = "integer", minimum = 0, default = 1},
-        buffer_duration = {type = "integer", minimum = 1, default = 60},
-        inactive_timeout = {type = "integer", minimum = 1, default = 5},
-        batch_max_size = {type = "integer", minimum = 1, default = 1000},
-        include_req_body = {type = "boolean", default = false}
+        include_req_body = {type = "boolean", default = false},
+        include_resp_body = {type = "boolean", default = false},
+        include_resp_body_expr = {
+            type = "array",
+            minItems = 1,
+            items = {
+                type = "array",
+                items = {
+                    type = "string"
+                }
+            }
+        },
+        concat_method = {type = "string", default = "json",
+                         enum = {"json", "new_line"}}
     },
     required = {"uri"}
+}
+
+
+local metadata_schema = {
+    type = "object",
+    properties = {
+        log_format = log_util.metadata_schema_log_format,
+    },
 }
 
 
@@ -46,12 +66,21 @@ local _M = {
     version = 0.1,
     priority = 410,
     name = plugin_name,
-    schema = schema,
+    schema = batch_processor_manager:wrap_schema(schema),
+    metadata_schema = metadata_schema,
 }
 
 
-function _M.check_schema(conf)
-    return core.schema.check(schema, conf)
+function _M.check_schema(conf, schema_type)
+    if schema_type == core.schema.TYPE_METADATA then
+        return core.schema.check(metadata_schema, conf)
+    end
+
+    local ok, err = core.schema.check(schema, conf)
+    if not ok then
+        return nil, err
+    end
+    return log_util.check_log_schema(conf)
 end
 
 
@@ -61,6 +90,8 @@ local function send_http_data(conf, log_message)
     local url_decoded = url.parse(conf.uri)
     local host = url_decoded.host
     local port = url_decoded.port
+
+    core.log.info("sending a batch logs to ", conf.uri)
 
     if ((not port) and url_decoded.scheme == "https") then
         port = 443
@@ -80,9 +111,16 @@ local function send_http_data(conf, log_message)
     if url_decoded.scheme == "https" then
         ok, err = httpc:ssl_handshake(true, host, false)
         if not ok then
-            return nil, "failed to perform SSL with host[" .. host .. "] "
+            return false, "failed to perform SSL with host[" .. host .. "] "
                 .. "port[" .. tostring(port) .. "] " .. err
         end
+    end
+
+    local content_type
+    if conf.concat_method == "json" then
+        content_type = "application/json"
+    else
+        content_type = "text/plain"
     end
 
     local httpc_res, httpc_err = httpc:request({
@@ -92,7 +130,7 @@ local function send_http_data(conf, log_message)
         body = log_message,
         headers = {
             ["Host"] = url_decoded.host,
-            ["Content-Type"] = "application/json",
+            ["Content-Type"] = content_type,
             ["Authorization"] = conf.auth_header
         }
     })
@@ -110,39 +148,66 @@ local function send_http_data(conf, log_message)
             .. "body[" .. httpc_res:read_body() .. "]"
     end
 
-    -- keep the connection alive
-    ok, err = httpc:set_keepalive(conf.keepalive)
-
-    if not ok then
-        core.log.debug("failed to keep the connection alive", err)
-    end
-
     return res, err_msg
 end
 
 
-function _M.log(conf)
-    local entry = log_util.get_full_log(ngx, conf)
+function _M.body_filter(conf, ctx)
+    log_util.collect_body(conf, ctx)
+end
 
-    if not entry.route_id then
-        core.log.error("failed to obtain the route id for http logger")
-        return
+
+function _M.log(conf, ctx)
+    local metadata = plugin.plugin_metadata(plugin_name)
+    core.log.info("metadata: ", core.json.delay_encode(metadata))
+
+    local entry
+
+    if metadata and metadata.value.log_format
+       and core.table.nkeys(metadata.value.log_format) > 0
+    then
+        entry = log_util.get_custom_format_log(ctx, metadata.value.log_format)
+    else
+        entry = log_util.get_full_log(ngx, conf)
     end
 
-    local log_buffer = buffers[entry.route_id]
+    if not entry.route_id then
+        entry.route_id = "no-matched"
+    end
 
-    if log_buffer then
-        log_buffer:push(entry)
+    if batch_processor_manager:add_entry(conf, entry) then
         return
     end
 
     -- Generate a function to be executed by the batch processor
     local func = function(entries, batch_max_size)
         local data, err
-        if batch_max_size == 1 then
-            data, err = core.json.encode(entries[1]) -- encode as single {}
+
+        if conf.concat_method == "json" then
+            if batch_max_size == 1 then
+                data, err = core.json.encode(entries[1]) -- encode as single {}
+            else
+                data, err = core.json.encode(entries) -- encode as array [{}]
+            end
+
+        elseif conf.concat_method == "new_line" then
+            if batch_max_size == 1 then
+                data, err = core.json.encode(entries[1]) -- encode as single {}
+            else
+                local t = core.table.new(#entries, 0)
+                for i, entry in ipairs(entries) do
+                    t[i], err = core.json.encode(entry)
+                    if err then
+                        core.log.warn("failed to encode http log: ", err, ", log data: ", entry)
+                        break
+                    end
+                end
+                data = core.table.concat(t, "\n") -- encode as multiple string
+            end
+
         else
-            data, err = core.json.encode(entries) -- encode as array [{}]
+            -- defensive programming check
+            err = "unknown concat_method " .. (conf.concat_method or "nil")
         end
 
         if not data then
@@ -152,25 +217,8 @@ function _M.log(conf)
         return send_http_data(conf, data)
     end
 
-    local config = {
-        name = conf.name,
-        retry_delay = conf.retry_delay,
-        batch_max_size = conf.batch_max_size,
-        max_retry_count = conf.max_retry_count,
-        buffer_duration = conf.buffer_duration,
-        inactive_timeout = conf.inactive_timeout,
-    }
-
-    local err
-    log_buffer, err = batch_processor:new(func, config)
-
-    if not log_buffer then
-        core.log.error("error when creating the batch processor: ", err)
-        return
-    end
-
-    buffers[entry.route_id] = log_buffer
-    log_buffer:push(entry)
+    batch_processor_manager:add_entry_to_new_processor(conf, entry, ctx, func)
 end
+
 
 return _M

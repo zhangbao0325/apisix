@@ -14,15 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-use t::APISIX;
-
-my $travis_os_name = $ENV{TRAVIS_OS_NAME};
-if ((defined $travis_os_name) && $travis_os_name eq "linux") {
-    plan(skip_all =>
-      "skip under Travis CI inux environment which doesn't work well with IPv6");
-} else {
-    plan 'no_plan';
-}
+use t::APISIX 'no_plan';
 
 repeat_each(1);
 log_level('info');
@@ -103,7 +95,7 @@ passed
 GET /not_found
 --- error_code: 404
 --- response_body
-{"error_msg":"failed to match any routes"}
+{"error_msg":"404 Route Not Found"}
 --- no_error_log
 [error]
 

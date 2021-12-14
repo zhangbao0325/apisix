@@ -14,7 +14,9 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 --
+local ngx = ngx
 local core = require("apisix.core")
+local plugin = require("apisix.plugin")
 local upstream = require("apisix.upstream")
 
 local schema = {
@@ -29,31 +31,53 @@ local schema = {
     required = {"i"},
 }
 
+local metadata_schema = {
+    type = "object",
+    properties = {
+        ikey = {type = "number", minimum = 0},
+        skey = {type = "string"},
+    },
+    required = {"ikey", "skey"},
+}
 
 local plugin_name = "example-plugin"
 
 local _M = {
     version = 0.1,
-    priority = 0,        -- TODO: add a type field, may be a good idea
+    priority = 0,
     name = plugin_name,
     schema = schema,
+    metadata_schema = metadata_schema,
 }
 
 
-function _M.check_schema(conf)
-    local ok, err = core.schema.check(schema, conf)
-
-    if not ok then
-        return false, err
+function _M.check_schema(conf, schema_type)
+    if schema_type == core.schema.TYPE_METADATA then
+        return core.schema.check(metadata_schema, conf)
     end
+    return core.schema.check(schema, conf)
+end
 
-    return true
+
+function _M.init()
+    -- call this function when plugin is loaded
+    local attr = plugin.plugin_attr(plugin_name)
+    if attr then
+        core.log.info(plugin_name, " get plugin attr val: ", attr.val)
+    end
+end
+
+
+function _M.destroy()
+    -- call this function when plugin is unloaded
 end
 
 
 function _M.rewrite(conf, ctx)
     core.log.warn("plugin rewrite phase, conf: ", core.json.encode(conf))
-    -- core.log.warn(" ctx: ", core.json.encode(ctx, true))
+    core.log.warn("conf_type: ", ctx.conf_type)
+    core.log.warn("conf_id: ", ctx.conf_id)
+    core.log.warn("conf_version: ", ctx.conf_version)
 end
 
 
@@ -79,8 +103,29 @@ function _M.access(conf, ctx)
 
     local matched_route = ctx.matched_route
     upstream.set(ctx, up_conf.type .. "#route_" .. matched_route.value.id,
-                 ctx.conf_version, up_conf, matched_route)
+                 ctx.conf_version, up_conf)
     return
+end
+
+
+local function hello()
+    local args = ngx.req.get_uri_args()
+    if args["json"] then
+        return 200, {msg = "world"}
+    else
+        return 200, "world\n"
+    end
+end
+
+
+function _M.control_api()
+    return {
+        {
+            methods = {"GET"},
+            uris = {"/v1/plugin/example-plugin/hello"},
+            handler = hello,
+        }
+    }
 end
 
 

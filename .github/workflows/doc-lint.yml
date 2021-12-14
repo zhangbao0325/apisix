@@ -1,0 +1,24 @@
+name: Doc Lint
+
+on:
+  pull_request:
+    branches: [master, 'release/**']
+    paths:
+      - '**/*.md'
+
+jobs:
+  markdownlint:
+    name: 🍇 Markdown
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - uses: actions/checkout@v2.4.0
+      - name: 🚀 Use Node.js
+        uses: actions/setup-node@v2.5.0
+        with:
+          node-version: '12.x'
+      - run: npm install -g markdownlint-cli@0.25.0
+      - run: markdownlint '**/*.md'
+      - name: check category
+        run: |
+          ./utils/check-category.py

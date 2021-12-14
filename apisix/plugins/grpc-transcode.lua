@@ -31,7 +31,7 @@ local pb_option_def = {
     },
     {   description = "int64 as result",
         type = "string",
-        enum = {"ienum_as_name", "enum_as_value"},
+        enum = {"enum_as_name", "enum_as_value"},
     },
     {   description ="default values option",
         type = "string",
@@ -120,11 +120,11 @@ function _M.access(conf, ctx)
         return
     end
 
-    local ok, err = request(proto_obj, conf.service,
-                            conf.method, conf.pb_option, conf.deadline)
+    local ok, err, err_code = request(proto_obj, conf.service,
+                                      conf.method, conf.pb_option, conf.deadline)
     if not ok then
         core.log.error("transform request error: ", err)
-        return
+        return err_code
     end
 
     ctx.proto_obj = proto_obj
@@ -163,7 +163,7 @@ function _M.body_filter(conf, ctx)
         return
     end
 
-    local err = response(proto_obj, conf.service, conf.method, conf.pb_option)
+    local err = response(ctx, proto_obj, conf.service, conf.method, conf.pb_option)
     if err then
         core.log.error("transform response error: ", err)
         return

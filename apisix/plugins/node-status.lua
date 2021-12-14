@@ -25,7 +25,6 @@ local ipairs = ipairs
 
 local schema = {
     type = "object",
-    additionalProperties = false,
 }
 
 
@@ -34,11 +33,12 @@ local _M = {
     priority = 1000,
     name = plugin_name,
     schema = schema,
+    scope = "global",
 }
 
 
 local ngx_status = {}
-local ngx_statu_items = {
+local ngx_status_items = {
     "active", "accepted", "handled", "total",
     "reading", "writing", "waiting"
 }
@@ -61,7 +61,7 @@ local function collect()
     end
 
     core.table.clear(ngx_status)
-    for _, name in ipairs(ngx_statu_items) do
+    for _, name in ipairs(ngx_status_items) do
         local val = iterator()
         if not val then
             break

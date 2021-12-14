@@ -16,8 +16,9 @@
 --
 local core = require("apisix.core")
 local get_routes = require("apisix.router").http_routes
+local apisix_upstream = require("apisix.upstream")
 local schema_plugin = require("apisix.admin.plugins").check_schema
-local upstreams = require("apisix.admin.upstreams")
+local utils = require("apisix.admin.utils")
 local tostring = tostring
 local ipairs = ipairs
 local type = type
@@ -62,7 +63,7 @@ local function check_conf(id, conf, need_id)
 
     local upstream_conf = conf.upstream
     if upstream_conf then
-        local ok, err = upstreams.check_upstream_conf(upstream_conf)
+        local ok, err = apisix_upstream.check_upstream_conf(upstream_conf)
         if not ok then
             return nil, {error_msg = err}
         end
@@ -116,10 +117,16 @@ function _M.put(id, conf)
 
     local key = "/services/" .. id
     core.log.info("key: ", key)
+
+    local ok, err = utils.inject_conf_with_prev_conf("service", key, conf)
+    if not ok then
+        return 503, {error_msg = err}
+    end
+
     local res, err = core.etcd.set(key, conf)
     if not res then
         core.log.error("failed to put service[", key, "]: ", err)
-        return 500, {error_msg = err}
+        return 503, {error_msg = err}
     end
 
     return res.status, res.body
@@ -132,12 +139,13 @@ function _M.get(id)
         key = key .. "/" .. id
     end
 
-    local res, err = core.etcd.get(key)
+    local res, err = core.etcd.get(key, not id)
     if not res then
         core.log.error("failed to get service[", key, "]: ", err)
-        return 500, {error_msg = err}
+        return 503, {error_msg = err}
     end
 
+    utils.fix_count(res.body, id)
     return res.status, res.body
 end
 
@@ -149,10 +157,11 @@ function _M.post(id, conf)
     end
 
     local key = "/services"
+    utils.inject_timestamp(conf)
     local res, err = core.etcd.push(key, conf)
     if not res then
         core.log.error("failed to post service[", key, "]: ", err)
-        return 500, {error_msg = err}
+        return 503, {error_msg = err}
     end
 
     return res.status, res.body
@@ -183,7 +192,7 @@ function _M.delete(id)
     local res, err = core.etcd.delete(key)
     if not res then
         core.log.error("failed to delete service[", key, "]: ", err)
-        return 500, {error_msg = err}
+        return 503, {error_msg = err}
     end
 
     return res.status, res.body
@@ -209,7 +218,7 @@ function _M.patch(id, conf, sub_path)
     local res_old, err = core.etcd.get(key)
     if not res_old then
         core.log.error("failed to get service[", key, "]: ", err)
-        return 500, {error_msg = err}
+        return 503, {error_msg = err}
     end
 
     if res_old.status ~= 200 then
@@ -219,6 +228,7 @@ function _M.patch(id, conf, sub_path)
                   core.json.delay_encode(res_old, true))
 
     local node_value = res_old.body.node.value
+    local modified_index = res_old.body.node.modifiedIndex
 
     if sub_path and sub_path ~= "" then
         local code, err, node_val = core.table.patch(node_value, sub_path, conf)
@@ -226,8 +236,10 @@ function _M.patch(id, conf, sub_path)
         if code then
             return code, err
         end
+        utils.inject_timestamp(node_value, nil, true)
     else
         node_value = core.table.merge(node_value, conf);
+        utils.inject_timestamp(node_value, nil, conf)
     end
 
     core.log.info("new value ", core.json.delay_encode(node_value, true))
@@ -237,11 +249,10 @@ function _M.patch(id, conf, sub_path)
         return 400, err
     end
 
-    -- TODO: this is not safe, we need to use compare-set
-    local res, err = core.etcd.set(key, node_value)
+    local res, err = core.etcd.atomic_set(key, node_value, nil, modified_index)
     if not res then
         core.log.error("failed to set new service[", key, "]: ", err)
-        return 500, {error_msg = err}
+        return 503, {error_msg = err}
     end
 
     return res.status, res.body

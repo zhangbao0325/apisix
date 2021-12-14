@@ -14,29 +14,23 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 --
-local healthcheck
-local require     = require
-local discovery   = require("apisix.discovery.init").discovery
-local balancer    = require("ngx.balancer")
-local core        = require("apisix.core")
-local ipairs      = ipairs
-local tostring    = tostring
+local require           = require
+local balancer          = require("ngx.balancer")
+local core              = require("apisix.core")
+local priority_balancer = require("apisix.balancer.priority")
+local ipairs            = ipairs
+local is_http           = ngx.config.subsystem == "http"
+local enable_keepalive = balancer.enable_keepalive and is_http
 local set_more_tries   = balancer.set_more_tries
 local get_last_failure = balancer.get_last_failure
 local set_timeouts     = balancer.set_timeouts
+local ngx_now          = ngx.now
 
 
 local module_name = "balancer"
-local pickers = {
-    roundrobin = require("apisix.balancer.roundrobin"),
-    chash = require("apisix.balancer.chash"),
-}
-
+local pickers = {}
 
 local lrucache_server_picker = core.lrucache.new({
-    ttl = 300, count = 256
-})
-local lrucache_checker = core.lrucache.new({
     ttl = 300, count = 256
 })
 local lrucache_addr = core.lrucache.new({
@@ -50,13 +44,27 @@ local _M = {
 }
 
 
+local function transform_node(new_nodes, node)
+    if not new_nodes._priority_index then
+        new_nodes._priority_index = {}
+    end
+
+    if not new_nodes[node.priority] then
+        new_nodes[node.priority] = {}
+        core.table.insert(new_nodes._priority_index, node.priority)
+    end
+
+    new_nodes[node.priority][node.host .. ":" .. node.port] = node.weight
+    return new_nodes
+end
+
+
 local function fetch_health_nodes(upstream, checker)
     local nodes = upstream.nodes
     if not checker then
         local new_nodes = core.table.new(0, #nodes)
         for _, node in ipairs(nodes) do
-            -- TODO filter with metadata
-            new_nodes[node.host .. ":" .. node.port] = node.weight
+            new_nodes = transform_node(new_nodes, node)
         end
         return new_nodes
     end
@@ -65,17 +73,19 @@ local function fetch_health_nodes(upstream, checker)
     local port = upstream.checks and upstream.checks.active and upstream.checks.active.port
     local up_nodes = core.table.new(0, #nodes)
     for _, node in ipairs(nodes) do
-        local ok = checker:get_target_status(node.host, port or node.port, host)
+        local ok, err = checker:get_target_status(node.host, port or node.port, host)
         if ok then
-            -- TODO filter with metadata
-            up_nodes[node.host .. ":" .. node.port] = node.weight
+            up_nodes = transform_node(up_nodes, node)
+        elseif err then
+            core.log.error("failed to get health check target status, addr: ",
+                node.host, ":", port or node.port, ", host: ", host, ", err: ", err)
         end
     end
 
     if core.table.nkeys(up_nodes) == 0 then
-        core.log.warn("all upstream nodes is unhealth, use default")
+        core.log.warn("all upstream nodes is unhealthy, use default")
         for _, node in ipairs(nodes) do
-            up_nodes[node.host .. ":" .. node.port] = node.weight
+            up_nodes = transform_node(up_nodes, node)
         end
     end
 
@@ -83,67 +93,37 @@ local function fetch_health_nodes(upstream, checker)
 end
 
 
-local function create_checker(upstream, healthcheck_parent)
-    if healthcheck == nil then
-        healthcheck = require("resty.healthcheck")
-    end
-    local checker = healthcheck.new({
-        name = "upstream#" .. healthcheck_parent.key,
-        shm_name = "upstream-healthcheck",
-        checks = upstream.checks,
-    })
-
-    local host = upstream.checks and upstream.checks.active and upstream.checks.active.host
-    local port = upstream.checks and upstream.checks.active and upstream.checks.active.port
-    for _, node in ipairs(upstream.nodes) do
-        local ok, err = checker:add_target(node.host, port or node.port, host)
-        if not ok then
-            core.log.error("failed to add new health check target: ", node.host, ":",
-                    port or node.port, " err: ", err)
-        end
-    end
-
-    if upstream.parent then
-        core.table.insert(upstream.parent.clean_handlers, function ()
-            core.log.info("try to release checker: ", tostring(checker))
-            checker:stop()
-        end)
-
-    else
-        core.table.insert(healthcheck_parent.clean_handlers, function ()
-            core.log.info("try to release checker: ", tostring(checker))
-            checker:stop()
-        end)
-    end
-
-    core.log.info("create new checker: ", tostring(checker))
-    return checker
-end
-
-
-local function fetch_healthchecker(upstream, healthcheck_parent, version)
-    if not upstream.checks then
-        return
-    end
-
-    if upstream.checker then
-        return
-    end
-
-    local checker = lrucache_checker(upstream, version,
-                                     create_checker, upstream,
-                                     healthcheck_parent)
-    return checker
-end
-
-
 local function create_server_picker(upstream, checker)
     local picker = pickers[upstream.type]
-    if picker then
-        local up_nodes = fetch_health_nodes(upstream, checker)
-        core.log.info("upstream nodes: ", core.json.delay_encode(up_nodes))
+    if not picker then
+        pickers[upstream.type] = require("apisix.balancer." .. upstream.type)
+        picker = pickers[upstream.type]
+    end
 
-        return picker.new(up_nodes, upstream)
+    if picker then
+        local nodes = upstream.nodes
+        local addr_to_domain = {}
+        for _, node in ipairs(nodes) do
+            if node.domain then
+                local addr = node.host .. ":" .. node.port
+                addr_to_domain[addr] = node.domain
+            end
+        end
+
+        local up_nodes = fetch_health_nodes(upstream, checker)
+
+        if #up_nodes._priority_index > 1 then
+            core.log.info("upstream nodes: ", core.json.delay_encode(up_nodes))
+            local server_picker = priority_balancer.new(up_nodes, upstream, picker)
+            server_picker.addr_to_domain = addr_to_domain
+            return server_picker
+        end
+
+        core.log.info("upstream nodes: ",
+                      core.json.delay_encode(up_nodes[up_nodes._priority_index[1]]))
+        local server_picker = picker.new(up_nodes[up_nodes._priority_index[1]], upstream)
+        server_picker.addr_to_domain = addr_to_domain
+        return server_picker
     end
 
     return nil, "invalid balancer type: " .. upstream.type, 0
@@ -156,24 +136,20 @@ local function parse_addr(addr)
 end
 
 
-local function pick_server(route, ctx)
-    core.log.info("route: ", core.json.delay_encode(route, true))
-    core.log.info("ctx: ", core.json.delay_encode(ctx, true))
+-- set_balancer_opts will be called in balancer phase and before any tries
+local function set_balancer_opts(route, ctx)
     local up_conf = ctx.upstream_conf
-    if up_conf.service_name then
-        if not discovery then
-            return nil, "discovery is uninitialized"
+
+    -- If the matched route has timeout config, prefer to use the route config.
+    local timeout = nil
+    if route and route.value and route.value.timeout then
+        timeout = route.value.timeout
+    else
+        if up_conf.timeout then
+            timeout = up_conf.timeout
         end
-        up_conf.nodes = discovery.nodes(up_conf.service_name)
     end
-
-    local nodes_count = up_conf.nodes and #up_conf.nodes or 0
-    if nodes_count == 0 then
-        return nil, "no valid upstream node"
-    end
-
-    if up_conf.timeout then
-        local timeout = up_conf.timeout
+    if timeout then
         local ok, err = set_timeouts(timeout.connect, timeout.send,
                                      timeout.read)
         if not ok then
@@ -181,6 +157,34 @@ local function pick_server(route, ctx)
         end
     end
 
+    local retries = up_conf.retries
+    if not retries or retries < 0 then
+        retries = #up_conf.nodes - 1
+    end
+
+    if retries > 0 then
+        if up_conf.retry_timeout and up_conf.retry_timeout > 0 then
+            ctx.proxy_retry_deadline = ngx_now() + up_conf.retry_timeout
+        end
+        local ok, err = set_more_tries(retries)
+        if not ok then
+            core.log.error("could not set upstream retries: ", err)
+        elseif err then
+            core.log.warn("could not set upstream retries: ", err)
+        end
+    end
+end
+
+
+-- pick_server will be called:
+-- 1. in the access phase so that we can set headers according to the picked server
+-- 2. each time we need to retry upstream
+local function pick_server(route, ctx)
+    core.log.info("route: ", core.json.delay_encode(route, true))
+    core.log.info("ctx: ", core.json.delay_encode(ctx, true))
+    local up_conf = ctx.upstream_conf
+
+    local nodes_count = #up_conf.nodes
     if nodes_count == 1 then
         local node = up_conf.nodes[1]
         ctx.balancer_ip = node.host
@@ -188,36 +192,29 @@ local function pick_server(route, ctx)
         return node
     end
 
-    local healthcheck_parent = ctx.upstream_healthcheck_parent
     local version = ctx.upstream_version
     local key = ctx.upstream_key
-    local checker = fetch_healthchecker(up_conf, healthcheck_parent, version)
-    ctx.up_checker = checker
+    local checker = ctx.up_checker
 
     ctx.balancer_try_count = (ctx.balancer_try_count or 0) + 1
-    if checker and ctx.balancer_try_count > 1 then
-        local state, code = get_last_failure()
-        local host = up_conf.checks and up_conf.checks.active and up_conf.checks.active.host
-        local port = up_conf.checks and up_conf.checks.active and up_conf.checks.active.port
-        if state == "failed" then
-            if code == 504 then
-                checker:report_timeout(ctx.balancer_ip, port or ctx.balancer_port, host)
+    if ctx.balancer_try_count > 1 then
+        if ctx.server_picker and ctx.server_picker.after_balance then
+            ctx.server_picker.after_balance(ctx, true)
+        end
+
+        if checker then
+            local state, code = get_last_failure()
+            local host = up_conf.checks and up_conf.checks.active and up_conf.checks.active.host
+            local port = up_conf.checks and up_conf.checks.active and up_conf.checks.active.port
+            if state == "failed" then
+                if code == 504 then
+                    checker:report_timeout(ctx.balancer_ip, port or ctx.balancer_port, host)
+                else
+                    checker:report_tcp_failure(ctx.balancer_ip, port or ctx.balancer_port, host)
+                end
             else
-                checker:report_tcp_failure(ctx.balancer_ip, port or ctx.balancer_port, host)
+                checker:report_http_status(ctx.balancer_ip, port or ctx.balancer_port, host, code)
             end
-        else
-            checker:report_http_status(ctx.balancer_ip, port or ctx.balancer_port, host, code)
-        end
-    end
-
-    if ctx.balancer_try_count == 1 then
-        local retries = up_conf.retries
-        if not retries or retries < 0 then
-            retries = #up_conf.nodes - 1
-        end
-
-        if retries > 0 then
-            set_more_tries(retries)
         end
     end
 
@@ -225,8 +222,12 @@ local function pick_server(route, ctx)
         version = version .. "#" .. checker.status_ver
     end
 
-    local server_picker = lrucache_server_picker(key, version,
-                            create_server_picker, up_conf, checker)
+    -- the same picker will be used in the whole request, especially during the retry
+    local server_picker = ctx.server_picker
+    if not server_picker then
+        server_picker = lrucache_server_picker(key, version,
+                                               create_server_picker, up_conf, checker)
+    end
     if not server_picker then
         return nil, "failed to fetch server picker"
     end
@@ -236,15 +237,19 @@ local function pick_server(route, ctx)
         err = err or "no valid upstream node"
         return nil, "failed to find valid upstream server, " .. err
     end
+    ctx.balancer_server = server
 
+    local domain = server_picker.addr_to_domain[server]
     local res, err = lrucache_addr(server, nil, parse_addr, server)
-    ctx.balancer_ip = res.host
-    ctx.balancer_port = res.port
-    -- core.log.info("cached balancer peer host: ", host, ":", port)
     if err then
         core.log.error("failed to parse server addr: ", server, " err: ", err)
         return core.response.exit(502)
     end
+
+    res.domain = domain
+    ctx.balancer_ip = res.host
+    ctx.balancer_port = res.port
+    ctx.server_picker = server_picker
 
     return res
 end
@@ -254,15 +259,96 @@ end
 _M.pick_server = pick_server
 
 
-function _M.run(route, ctx)
-    local server, err = pick_server(route, ctx)
-    if not server then
-        core.log.error("failed to pick server: ", err)
-        return core.response.exit(502)
+local set_current_peer
+do
+    local pool_opt = {}
+    local default_keepalive_pool
+
+    function set_current_peer(server, ctx)
+        local up_conf = ctx.upstream_conf
+        local keepalive_pool = up_conf.keepalive_pool
+
+        if enable_keepalive then
+            if not keepalive_pool then
+                if not default_keepalive_pool then
+                    local local_conf = core.config.local_conf()
+                    local up_keepalive_conf =
+                        core.table.try_read_attr(local_conf, "nginx_config",
+                                                 "http", "upstream")
+                    default_keepalive_pool = {}
+                    default_keepalive_pool.idle_timeout =
+                        core.config_util.parse_time_unit(up_keepalive_conf.keepalive_timeout)
+                    default_keepalive_pool.size = up_keepalive_conf.keepalive
+                    default_keepalive_pool.requests = up_keepalive_conf.keepalive_requests
+                end
+
+                keepalive_pool = default_keepalive_pool
+            end
+
+            local idle_timeout = keepalive_pool.idle_timeout
+            local size = keepalive_pool.size
+            local requests = keepalive_pool.requests
+
+            pool_opt.pool_size = size
+            local ok, err = balancer.set_current_peer(server.host, server.port,
+                                                      pool_opt)
+            if not ok then
+                return ok, err
+            end
+
+            return balancer.enable_keepalive(idle_timeout, requests)
+        end
+
+        return balancer.set_current_peer(server.host, server.port)
+    end
+end
+
+
+function _M.run(route, ctx, plugin_funcs)
+    local server, err
+
+    if ctx.picked_server then
+        -- use the server picked in the access phase
+        server = ctx.picked_server
+        ctx.picked_server = nil
+
+        set_balancer_opts(route, ctx)
+
+    else
+        if ctx.proxy_retry_deadline and ctx.proxy_retry_deadline < ngx_now() then
+            -- retry count is (try count - 1)
+            core.log.error("proxy retry timeout, retry count: ", (ctx.balancer_try_count or 1) - 1,
+                           ", deadline: ", ctx.proxy_retry_deadline, " now: ", ngx_now())
+            return core.response.exit(502)
+        end
+        -- retry
+        server, err = pick_server(route, ctx)
+        if not server then
+            core.log.error("failed to pick server: ", err)
+            return core.response.exit(502)
+        end
+
+        local header_changed
+        local pass_host = ctx.pass_host
+        if pass_host == "node" and balancer.recreate_request then
+            local host = server.domain or server.host
+            if host ~= ctx.var.upstream_host then
+                -- retried node has a different host
+                ctx.var.upstream_host = host
+                header_changed = true
+            end
+        end
+
+        local _, run = plugin_funcs("before_proxy")
+        -- always recreate request as the request may be changed by plugins
+        if (run or header_changed) and balancer.recreate_request then
+            balancer.recreate_request()
+        end
     end
 
     core.log.info("proxy request to ", server.host, ":", server.port)
-    local ok, err = balancer.set_current_peer(server.host, server.port)
+
+    local ok, err = set_current_peer(server, ctx)
     if not ok then
         core.log.error("failed to set server peer [", server.host, ":",
                        server.port, "] err: ", err)

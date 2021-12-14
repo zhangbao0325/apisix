@@ -32,8 +32,8 @@ location /t {
         local core = require("apisix.core")
         local t = require("lib.test_admin")
 
-        local ssl_cert = t.read_file("conf/cert/apisix.crt")
-        local ssl_key =  t.read_file("conf/cert/apisix.key")
+        local ssl_cert = t.read_file("t/certs/apisix.crt")
+        local ssl_key =  t.read_file("t/certs/apisix.key")
         local data = {cert = ssl_cert, key = ssl_key, sni = "www.test.com"}
 
         local code, body = t.test('/apisix/admin/ssl/1',
@@ -124,7 +124,7 @@ location /t {
                 return
             end
 
-            ngx.say("ssl handshake: ", type(sess))
+            ngx.say("ssl handshake: ", sess ~= nil)
 
             local req = "GET /hello HTTP/1.0\r\nHost: www.test.com\r\nConnection: close\r\n\r\n"
             local bytes, err = sock:send(req)
@@ -155,16 +155,17 @@ location /t {
 GET /t
 --- response_body eval
 qr{connected: 1
-ssl handshake: userdata
+ssl handshake: true
 sent http request: 62 bytes.
 received: HTTP/1.1 200 OK
 received: Content-Type: text/plain
+received: Content-Length: 12
 received: Connection: close
-received: Server: \w+
+received: Server: APISIX/\d\.\d+(\.\d+)?
 received: \nreceived: hello world
 close: 1 nil}
 --- error_log
-lua ssl server name: "www.test.com"
+server name: "www.test.com"
 --- no_error_log
 [error]
 [alert]
@@ -218,8 +219,8 @@ location /t {
         local core = require("apisix.core")
         local t = require("lib.test_admin")
 
-        local ssl_cert = t.read_file("conf/cert/apisix.crt")
-        local ssl_key =  t.read_file("conf/cert/apisix.key")
+        local ssl_cert = t.read_file("t/certs/apisix.crt")
+        local ssl_key =  t.read_file("t/certs/apisix.key")
         local data = {cert = ssl_cert, key = ssl_key, sni = "*.test.com"}
 
         local code, body = t.test('/apisix/admin/ssl/1',
@@ -277,7 +278,7 @@ location /t {
                 return
             end
 
-            ngx.say("ssl handshake: ", type(sess))
+            ngx.say("ssl handshake: ", sess ~= nil)
 
             local req = "GET /hello HTTP/1.0\r\nHost: www.test.com\r\nConnection: close\r\n\r\n"
             local bytes, err = sock:send(req)
@@ -308,16 +309,17 @@ location /t {
 GET /t
 --- response_body eval
 qr{connected: 1
-ssl handshake: userdata
+ssl handshake: true
 sent http request: 62 bytes.
 received: HTTP/1.1 200 OK
 received: Content-Type: text/plain
+received: Content-Length: 12
 received: Connection: close
-received: Server: \w+
+received: Server: APISIX/\d\.\d+(\.\d+)?
 received: \nreceived: hello world
 close: 1 nil}
 --- error_log
-lua ssl server name: "www.test.com"
+server name: "www.test.com"
 --- no_error_log
 [error]
 [alert]
@@ -331,8 +333,8 @@ location /t {
         local core = require("apisix.core")
         local t = require("lib.test_admin")
 
-        local ssl_cert = t.read_file("conf/cert/apisix.crt")
-        local ssl_key =  t.read_file("conf/cert/apisix.key")
+        local ssl_cert = t.read_file("t/certs/apisix.crt")
+        local ssl_key =  t.read_file("t/certs/apisix.key")
         local data = {cert = ssl_cert, key = ssl_key, sni = "test.com"}
 
         local code, body = t.test('/apisix/admin/ssl/1',
@@ -390,7 +392,7 @@ location /t {
                 return
             end
 
-            ngx.say("ssl handshake: ", type(sess))
+            ngx.say("ssl handshake: ", sess ~= nil)
 
             local req = "GET /hello HTTP/1.0\r\nHost: test.com\r\nConnection: close\r\n\r\n"
             local bytes, err = sock:send(req)
@@ -421,16 +423,17 @@ location /t {
 GET /t
 --- response_body eval
 qr{connected: 1
-ssl handshake: userdata
+ssl handshake: true
 sent http request: 58 bytes.
 received: HTTP/1.1 200 OK
 received: Content-Type: text/plain
+received: Content-Length: 12
 received: Connection: close
-received: Server: \w+
+received: Server: APISIX/\d\.\d+(\.\d+)?
 received: \nreceived: hello world
 close: 1 nil}
 --- error_log
-lua ssl server name: "test.com"
+server name: "test.com"
 --- no_error_log
 [error]
 [alert]
@@ -444,8 +447,8 @@ location /t {
         local core = require("apisix.core")
         local t = require("lib.test_admin")
 
-        local ssl_cert = t.read_file("conf/cert/test2.crt")
-        local ssl_key =  t.read_file("conf/cert/test2.key")
+        local ssl_cert = t.read_file("t/certs/test2.crt")
+        local ssl_key =  t.read_file("t/certs/test2.key")
         local data = {cert = ssl_cert, key = ssl_key, sni = "*.test2.com"}
 
         local code, body = t.test('/apisix/admin/ssl/1',
@@ -503,7 +506,7 @@ location /t {
                 return
             end
 
-            ngx.say("ssl handshake: ", type(sess))
+            ngx.say("ssl handshake: ", sess ~= nil)
         end  -- do
         -- collectgarbage()
     }
@@ -514,7 +517,7 @@ GET /t
 connected: 1
 failed to do SSL handshake: 18: self signed certificate
 --- error_log
-lua ssl server name: "www.test2.com"
+server name: "www.test2.com"
 --- no_error_log
 [error]
 [alert]
@@ -549,7 +552,7 @@ location /t {
                 return
             end
 
-            ngx.say("ssl handshake: ", type(sess))
+            ngx.say("ssl handshake: ", sess ~= nil)
         end  -- do
         -- collectgarbage()
     }
@@ -560,7 +563,7 @@ GET /t
 connected: 1
 failed to do SSL handshake: handshake failed
 --- error_log
-lua ssl server name: "aa.bb.test2.com"
+server name: "aa.bb.test2.com"
 failed to find any SSL certificate by SNI: aa.bb.test2.com matched SNI: *.test2.com
 --- no_error_log
 [alert]
@@ -586,7 +589,7 @@ location /t {
                     },
                     "key": "/apisix/ssl/1"
                 },
-                "action": "set"
+                "action": "compareAndSwap"
             }]]
             )
 
@@ -631,7 +634,7 @@ location /t {
                 return
             end
 
-            ngx.say("ssl handshake: ", type(sess))
+            ngx.say("ssl handshake: ", sess ~= nil)
         end  -- do
         -- collectgarbage()
     }
@@ -642,7 +645,7 @@ GET /t
 connected: 1
 failed to do SSL handshake: handshake failed
 --- error_log
-lua ssl server name: "www.test2.com"
+server name: "www.test2.com"
 --- no_error_log
 [alert]
 
@@ -667,7 +670,7 @@ location /t {
                     },
                     "key": "/apisix/ssl/1"
                 },
-                "action": "set"
+                "action": "compareAndSwap"
             }]]
             )
 
@@ -712,7 +715,7 @@ location /t {
                 return
             end
 
-            ngx.say("ssl handshake: ", type(sess))
+            ngx.say("ssl handshake: ", sess ~= nil)
         end  -- do
         -- collectgarbage()
     }
@@ -723,7 +726,7 @@ GET /t
 connected: 1
 failed to do SSL handshake: 18: self signed certificate
 --- error_log
-lua ssl server name: "www.test2.com"
+server name: "www.test2.com"
 --- no_error_log
 [error]
 [alert]
@@ -737,8 +740,8 @@ location /t {
         local core = require("apisix.core")
         local t = require("lib.test_admin")
 
-        local ssl_cert = t.read_file("conf/cert/test2.crt")
-        local ssl_key =  t.read_file("conf/cert/test2.key")
+        local ssl_cert = t.read_file("t/certs/test2.crt")
+        local ssl_key =  t.read_file("t/certs/test2.key")
         local data = {cert = ssl_cert, key = ssl_key, snis = {"test2.com", "*.test2.com"}}
 
         local code, body = t.test('/apisix/admin/ssl/1',
@@ -796,7 +799,7 @@ location /t {
                 return
             end
 
-            ngx.say("ssl handshake: ", type(sess))
+            ngx.say("ssl handshake: ", sess ~= nil)
         end  -- do
         -- collectgarbage()
     }
@@ -807,7 +810,7 @@ GET /t
 connected: 1
 failed to do SSL handshake: 18: self signed certificate
 --- error_log
-lua ssl server name: "test2.com"
+server name: "test2.com"
 --- no_error_log
 [error]
 [alert]
@@ -842,7 +845,7 @@ location /t {
                 return
             end
 
-            ngx.say("ssl handshake: ", type(sess))
+            ngx.say("ssl handshake: ", sess ~= nil)
         end  -- do
         -- collectgarbage()
     }
@@ -853,7 +856,7 @@ GET /t
 connected: 1
 failed to do SSL handshake: handshake failed
 --- error_log
-lua ssl server name: "aa.bb.test2.com"
+server name: "aa.bb.test2.com"
 failed to find any SSL certificate by SNI: aa.bb.test2.com matched SNIs: ["*.test2.com","test2.com"]
 --- no_error_log
 [alert]
@@ -867,73 +870,21 @@ location /t {
         local core = require("apisix.core")
         local t = require("lib.test_admin")
 
-        local ssl_cert = t.read_file("conf/cert/test2.crt")
-        local ssl_key =  t.aes_encrypt(t.read_file("conf/cert/test2.key"))
+        local ssl_cert = t.read_file("t/certs/test2.crt")
+        local ssl_key =  t.aes_encrypt(t.read_file("t/certs/test2.key"))
         local data = {cert = ssl_cert, key = ssl_key, snis = {"test2.com", "*.test2.com"}}
 
         local code, body = t.test('/apisix/admin/ssl/1',
             ngx.HTTP_PUT,
-            core.json.encode(data),
-            [[{
-                "node": {
-                    "value": {
-                        "snis": ["test2.com", "*.test2.com"]
-                    },
-                    "key": "/apisix/ssl/1"
-                },
-                "action": "set"
-            }]]
+            core.json.encode(data)
             )
 
         ngx.status = code
-        ngx.say(body)
+        ngx.print(body)
     }
 }
 --- request
 GET /t
 --- response_body
-passed
---- no_error_log
-[error]
-
-
-
-=== TEST 20: client request: test2.com
---- config
-listen unix:$TEST_NGINX_HTML_DIR/nginx.sock ssl;
-location /t {
-    content_by_lua_block {
-        -- etcd sync
-        ngx.sleep(0.2)
-
-        do
-            local sock = ngx.socket.tcp()
-
-            sock:settimeout(2000)
-
-            local ok, err = sock:connect("unix:$TEST_NGINX_HTML_DIR/nginx.sock")
-            if not ok then
-                ngx.say("failed to connect: ", err)
-                return
-            end
-
-            ngx.say("connected: ", ok)
-
-            local sess, err = sock:sslhandshake(nil, "test2.com", true)
-            if not sess then
-                ngx.say("failed to do SSL handshake: ", err)
-                return
-            end
-
-            ngx.say("ssl handshake: ", type(sess))
-        end  -- do
-        -- collectgarbage()
-    }
-}
---- request
-GET /t
---- response_body
-connected: 1
-failed to do SSL handshake: handshake failed
---- error_log
-decrypt ssl key failed.
+{"error_msg":"failed to decrypt previous encrypted key"}
+--- error_code: 400
