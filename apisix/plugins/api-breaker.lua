@@ -20,6 +20,8 @@ local plugin_name = "api-breaker"
 local ngx = ngx
 local math = math
 local error = error
+local ipairs = ipairs
+
 
 local shared_buffer = ngx.shared["plugin-".. plugin_name]
 if not shared_buffer then
@@ -34,6 +36,26 @@ local schema = {
             type = "integer",
             minimum = 200,
             maximum = 599,
+        },
+        break_response_body = {
+            type = "string"
+        },
+        break_response_headers = {
+            type = "array",
+            items = {
+                type = "object",
+                properties = {
+                    key = {
+                        type = "string",
+                        minLength = 1
+                    },
+                    value = {
+                        type = "string",
+                        minLength = 1
+                    }
+                },
+                required = {"key", "value"},
+            }
         },
         max_breaker_sec = {
             type = "integer",
@@ -158,6 +180,15 @@ function _M.access(conf, ctx)
 
     -- breaker
     if lasttime + breaker_time >= ngx.time() then
+        if conf.break_response_body then
+            if conf.break_response_headers then
+                for _, value in ipairs(conf.break_response_headers) do
+                    local val = core.utils.resolve_var(value.value, ctx.var)
+                    core.response.add_header(value.key, val)
+                end
+            end
+            return conf.break_response_code, conf.break_response_body
+        end
         return conf.break_response_code
     end
 
@@ -232,6 +263,5 @@ function _M.log(conf, ctx)
 
     return
 end
-
 
 return _M

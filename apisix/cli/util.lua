@@ -39,7 +39,7 @@ local function execute_cmd(cmd)
     local data, err = t:read("*all")
     t:close()
 
-    if err ~= nil then
+    if not data then
         return nil, "failed to read execution result of: "
                     .. cmd .. ", error info: " .. err
     end
@@ -78,12 +78,11 @@ function _M.read_file(file_path)
     end
 
     local data, err = file:read("*all")
-    if err ~= nil then
-        file:close()
+    file:close()
+    if not data then
         return false, "failed to read file: " .. file_path .. ", error info:" .. err
     end
 
-    file:close()
     return data
 end
 
@@ -116,22 +115,14 @@ function _M.write_file(file_path, data)
                       .. err
     end
 
-    file:write(data)
+    local ok, err = file:write(data)
     file:close()
-    return true
-end
-
-
-function _M.is_file_exist(file_path)
-    local file, err = open(file_path)
-    if not file then
-        return false, "failed to open file: "
+    if not ok then
+        return false, "failed to write file: "
                       .. file_path
-                      .. ", error info: "
+                      .. ", error info:"
                       .. err
     end
-
-    file:close()
     return true
 end
 

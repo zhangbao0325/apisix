@@ -50,8 +50,11 @@ _EOC_
     my $yaml_config = $block->yaml_config // <<_EOC_;
 apisix:
     node_listen: 1984
-    config_center: yaml
     enable_admin: false
+deployment:
+    role: data_plane
+    role_data_plane:
+        config_provider: yaml
 _EOC_
 
     $block->set_value("yaml_config", $yaml_config);
@@ -79,12 +82,13 @@ routes:
     plugins:
         dubbo-proxy:
             service_name: org.apache.dubbo.backend.DemoService
-            service_version: 0.0.0
+            service_version: 1.0.0
             method: hello
     upstream_id: 1
 #END
 --- response_body
 dubbo success
+--- ignore_error_log
 
 
 
@@ -96,7 +100,7 @@ routes:
     plugins:
         dubbo-proxy:
             service_name: org.apache.dubbo.backend.DemoService
-            service_version: 0.0.0
+            service_version: 1.0.0
             method: fail
     upstream_id: 1
 upstreams:
@@ -119,7 +123,7 @@ routes:
     plugins:
         dubbo-proxy:
             service_name: org.apache.dubbo.backend.DemoService
-            service_version: 0.0.0
+            service_version: 1.0.0
             method: timeout
     upstream_id: 1
 upstreams:
@@ -146,7 +150,7 @@ routes:
     plugins:
         dubbo-proxy:
             service_name: org.apache.dubbo.backend.DemoService
-            service_version: 0.0.0
+            service_version: 1.0.0
             method: badStatus
     upstream_id: 1
 upstreams:

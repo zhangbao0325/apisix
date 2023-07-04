@@ -43,12 +43,11 @@ done
 --- error_log
 loaded plugin and sort by priority: 23000 name: real-ip
 loaded plugin and sort by priority: 22000 name: client-control
+loaded plugin and sort by priority: 12015 name: request-id
+loaded plugin and sort by priority: 12011 name: zipkin
 loaded plugin and sort by priority: 12000 name: ext-plugin-pre-req
-loaded plugin and sort by priority: 11011 name: zipkin
-loaded plugin and sort by priority: 11010 name: request-id
 loaded plugin and sort by priority: 11000 name: fault-injection
 loaded plugin and sort by priority: 10000 name: serverless-pre-function
-loaded plugin and sort by priority: 4010 name: batch-requests
 loaded plugin and sort by priority: 4000 name: cors
 loaded plugin and sort by priority: 3000 name: ip-restriction
 loaded plugin and sort by priority: 2990 name: referer-restriction
@@ -62,8 +61,8 @@ loaded plugin and sort by priority: 2510 name: jwt-auth
 loaded plugin and sort by priority: 2500 name: key-auth
 loaded plugin and sort by priority: 2400 name: consumer-restriction
 loaded plugin and sort by priority: 2000 name: authz-keycloak
+loaded plugin and sort by priority: 1085 name: proxy-cache
 loaded plugin and sort by priority: 1010 name: proxy-mirror
-loaded plugin and sort by priority: 1009 name: proxy-cache
 loaded plugin and sort by priority: 1008 name: proxy-rewrite
 loaded plugin and sort by priority: 1005 name: api-breaker
 loaded plugin and sort by priority: 1003 name: limit-conn
@@ -84,6 +83,7 @@ loaded plugin and sort by priority: 403 name: kafka-logger
 loaded plugin and sort by priority: 402 name: rocketmq-logger
 loaded plugin and sort by priority: 401 name: syslog
 loaded plugin and sort by priority: 400 name: udp-logger
+loaded plugin and sort by priority: 398 name: clickhouse-logger
 loaded plugin and sort by priority: 0 name: example-plugin
 loaded plugin and sort by priority: -2000 name: serverless-post-function
 loaded plugin and sort by priority: -3000 name: ext-plugin-post-req
@@ -119,8 +119,6 @@ loaded plugin and sort by priority: -3000 name: ext-plugin-post-req
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -132,8 +130,6 @@ GET /hello
 hello world
 --- response_headers
 Apisix-Plugins: no plugin
---- no_error_log
-[error]
 
 
 
@@ -181,8 +177,6 @@ Apisix-Plugins: no plugin
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -213,8 +207,6 @@ passed
 GET /t
 --- response_body
 {"limit-conn":true,"limit-count":true}
---- no_error_log
-[error]
 
 
 
@@ -245,8 +237,6 @@ GET /t
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -279,8 +269,6 @@ GET /t
 {"limit-conn":true,"limit-count":true,"response-rewrite":true}
 --- error_log
 Apisix-Plugins: response-rewrite
---- no_error_log
-[error]
 
 
 
@@ -303,8 +291,6 @@ Apisix-Plugins: response-rewrite
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -321,12 +307,19 @@ passed
                     "plugins": {
                         "mqtt-proxy": {
                             "protocol_name": "MQTT",
-                            "protocol_level": 4,
-                            "upstream": {
-                                "ip": "127.0.0.1",
-                                "port": 1995
-                            }
+                            "protocol_level": 4
                         }
+                    },
+                    "upstream": {
+                        "type": "chash",
+                        "key": "mqtt_client_id",
+                        "nodes": [
+                            {
+                                "host": "127.0.0.1",
+                                "port": 1995,
+                                "weight": 1
+                            }
+                        ]
                     }
                 }]]
                 )
@@ -341,19 +334,14 @@ passed
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
 === TEST 10: hit route
 --- debug_config eval: $::debug_config
---- stream_enable
 --- stream_request eval
 "\x10\x0f\x00\x04\x4d\x51\x54\x54\x04\x02\x00\x3c\x00\x03\x66\x6f\x6f"
 --- stream_response
 hello world
 --- error_log
 mqtt client id: foo while prereading client data
---- no_error_log
-[error]

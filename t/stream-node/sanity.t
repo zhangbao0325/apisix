@@ -51,19 +51,14 @@ __DATA__
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
 === TEST 2: hit route
---- stream_enable
 --- stream_request eval
 mmm
 --- stream_response
 hello world
---- no_error_log
-[error]
 
 
 
@@ -95,16 +90,12 @@ hello world
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
 === TEST 4: not hit route
 --- stream_enable
 --- stream_response
---- no_error_log
-[error]
 
 
 
@@ -127,8 +118,6 @@ passed
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -161,8 +150,6 @@ passed
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -190,8 +177,6 @@ passed
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -217,19 +202,14 @@ passed
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
 === TEST 9: hit route
---- stream_enable
 --- stream_request eval
 mmm
 --- stream_response
 hello world
---- no_error_log
-[error]
 
 
 
@@ -279,8 +259,6 @@ location /t {
 GET /t
 --- response_body
 hello world
---- no_error_log
-[error]
 
 
 
@@ -306,19 +284,14 @@ hello world
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
 === TEST 12: hit route
---- stream_enable
 --- stream_request eval
 mmm
 --- stream_response
 hello world
---- no_error_log
-[error]
 
 
 
@@ -344,4 +317,87 @@ hello world
 GET /t
 --- error_code: 400
 --- response_body
-{"error_msg":"invalid remote_addr: :\/8"}
+{"error_msg":"invalid remote_addr: :/8"}
+
+
+
+=== TEST 14: skip upstream http host check in stream subsystem
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin").test
+            local code, body = t('/apisix/admin/upstreams/1',
+                ngx.HTTP_PUT,
+                [[{
+                    "nodes": {
+                        "127.0.0.1:1995": 1,
+                        "127.0.0.2:1995": 1
+                    },
+                    "pass_host": "node",
+                    "type": "roundrobin"
+                }]]
+            )
+            if code >= 300 then
+                ngx.status = code
+            end
+            ngx.say(body)
+        }
+    }
+--- request
+GET /t
+--- response_body
+passed
+
+
+
+=== TEST 15: hit route
+--- stream_request eval
+mmm
+--- stream_response
+hello world
+
+
+
+=== TEST 16: reuse ctx and more
+--- stream_extra_init_by_lua
+    local ctx = require("apisix.core.ctx")
+    local tablepool = require("apisix.core").tablepool
+
+    local old_set_vars_meta = ctx.set_vars_meta
+    ctx.set_vars_meta = function(...)
+        ngx.log(ngx.WARN, "fetch ctx var")
+        return old_set_vars_meta(...)
+    end
+
+    local old_release_vars = ctx.release_vars
+    ctx.release_vars = function(...)
+        ngx.log(ngx.WARN, "release ctx var")
+        return old_release_vars(...)
+    end
+
+    local old_fetch = tablepool.fetch
+    tablepool.fetch = function(name, ...)
+        ngx.log(ngx.WARN, "fetch table ", name)
+        return old_fetch(name, ...)
+    end
+
+    local old_release = tablepool.release
+    tablepool.release = function(name, ...)
+        ngx.log(ngx.WARN, "release table ", name)
+        return old_release(name, ...)
+    end
+--- stream_request eval
+mmm
+--- stream_response
+hello world
+--- grep_error_log eval
+qr/(fetch|release) (ctx var|table \w+)/
+--- grep_error_log_out
+fetch table api_ctx
+fetch ctx var
+fetch table ctx_var
+fetch table plugins
+release ctx var
+release table ctx_var
+release table plugins
+release table api_ctx

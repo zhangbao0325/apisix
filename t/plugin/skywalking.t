@@ -22,6 +22,8 @@ add_block_preprocessor(sub {
 
     my $extra_yaml_config = <<_EOC_;
 plugins:
+    - example-plugin
+    - key-auth
     - skywalking
 _EOC_
 
@@ -79,25 +81,6 @@ __DATA__
                         "type": "roundrobin"
                     },
                     "uri": "/opentracing"
-                }]],
-                [[{
-                    "node": {
-                        "value": {
-                            "plugins": {
-                                "skywalking": {
-                                }
-                            },
-                            "upstream": {
-                                "nodes": {
-                                    "127.0.0.1:1980": 1
-                                },
-                                "type": "roundrobin"
-                            },
-                            "uri": "/opentracing"
-                        },
-                        "key": "/apisix/routes/1"
-                    },
-                    "action": "set"
                 }]]
                 )
 
@@ -111,8 +94,6 @@ __DATA__
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -121,8 +102,6 @@ passed
 GET /opentracing
 --- response_body
 opentracing
---- no_error_log
-[error]
 --- grep_error_log eval
 qr/skywalking run \w+/
 --- grep_error_log_out
@@ -153,26 +132,6 @@ skywalking run prepareForReport
                         "type": "roundrobin"
                     },
                     "uri": "/opentracing"
-                }]],
-                [[{
-                    "node": {
-                        "value": {
-                            "plugins": {
-                                "skywalking": {
-                                    "sample_ratio": 0.00001
-                                }
-                            },
-                            "upstream": {
-                                "nodes": {
-                                    "127.0.0.1:1980": 1
-                                },
-                                "type": "roundrobin"
-                            },
-                            "uri": "/opentracing"
-                        },
-                        "key": "/apisix/routes/1"
-                    },
-                    "action": "set"
                 }]]
                 )
 
@@ -186,8 +145,6 @@ skywalking run prepareForReport
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -199,8 +156,6 @@ opentracing
 --- grep_error_log eval
 qr/skywalking run \w+/
 --- grep_error_log_out
---- no_error_log
-[error]
 
 
 
@@ -221,23 +176,6 @@ qr/skywalking run \w+/
                         "type": "roundrobin"
                     },
                     "uri": "/opentracing"
-                }]],
-                [[{
-                    "node": {
-                        "value": {
-                            "plugins": {
-                            },
-                            "upstream": {
-                                "nodes": {
-                                    "127.0.0.1:1980": 1
-                                },
-                                "type": "roundrobin"
-                            },
-                            "uri": "/opentracing"
-                        },
-                        "key": "/apisix/routes/1"
-                    },
-                    "action": "set"
                 }]]
                 )
 
@@ -251,8 +189,6 @@ qr/skywalking run \w+/
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -286,26 +222,6 @@ rewrite phase of skywalking plugin
                             "type": "roundrobin"
                         },
                         "uri": "/opentracing"
-                }]],
-                [[{
-                    "node": {
-                        "value": {
-                            "plugins": {
-                                "skywalking": {
-                                    "sample_ratio": 1
-                                }
-                            },
-                            "upstream": {
-                                "nodes": {
-                                    "127.0.0.1:1980": 1
-                                },
-                                "type": "roundrobin"
-                            },
-                            "uri": "/opentracing"
-                        },
-                        "key": "/apisix/routes/1"
-                    },
-                    "action": "set"
                 }]]
                 )
 
@@ -319,8 +235,6 @@ rewrite phase of skywalking plugin
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -329,8 +243,6 @@ passed
 GET /opentracing
 --- response_body
 opentracing
---- no_error_log
-[error]
 --- grep_error_log eval
 qr/skywalking run \w+/
 --- grep_error_log_out
@@ -390,8 +302,6 @@ skywalking run prepareForReport
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -400,8 +310,6 @@ passed
 GET /opentracing
 --- response_body
 opentracing
---- no_error_log
-[error]
 --- grep_error_log eval
 qr/skywalking run \w+/
 --- grep_error_log_out
@@ -421,7 +329,9 @@ skywalking run prepareForReport
                 [[{
                     "plugins": {
                         "skywalking": {
-                            "disable": 1
+                            "_meta": {
+                                "disable": true
+                            }
                         }
                     },
                     "upstream": {
@@ -461,8 +371,6 @@ skywalking run prepareForReport
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -471,8 +379,6 @@ passed
 GET /opentracing
 --- response_body
 opentracing
---- no_error_log
-[error]
 --- grep_error_log eval
 qr/skywalking run \w+/
 --- grep_error_log_out
@@ -499,5 +405,72 @@ skywalking run prepareForReport
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
+
+
+
+=== TEST 14: trace request rejected by auth
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin").test
+            local code, body = t('/apisix/admin/consumers',
+                ngx.HTTP_PUT,
+                [[{
+                    "username": "jack",
+                    "plugins": {
+                        "key-auth": {
+                            "key": "auth-one"
+                        }
+                    }
+                }]]
+                )
+
+            if code >= 300 then
+                ngx.status = code
+                ngx.say(body)
+                return
+            end
+
+            local code, body = t('/apisix/admin/routes/1',
+                ngx.HTTP_PUT,
+                [[{
+                    "plugins": {
+                        "key-auth": {},
+                        "example-plugin": {"i": 1},
+                        "skywalking": {}
+                    },
+                    "upstream": {
+                        "nodes": {
+                            "127.0.0.1:1980": 1
+                        },
+                        "type": "roundrobin"
+                    },
+                    "uri": "/opentracing"
+                }]]
+                )
+
+            if code >= 300 then
+                ngx.status = code
+            end
+            ngx.say(body)
+        }
+    }
+--- request
+GET /t
+--- response_body
+passed
+
+
+
+=== TEST 15: hit
+--- request
+GET /opentracing
+--- error_code: 401
+--- grep_error_log eval
+qr/(skywalking run \w+|plugin body_filter phase)/
+--- grep_error_log_out
+skywalking run start
+plugin body_filter phase
+plugin body_filter phase
+skywalking run finish
+skywalking run prepareForReport

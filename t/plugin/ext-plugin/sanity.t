@@ -82,7 +82,8 @@ __DATA__
                     "uri": "/hello",
                     "plugins": {
                         "ext-plugin-pre-req": {"a":"b"},
-                        "ext-plugin-post-req": {"c":"d"}
+                        "ext-plugin-post-req": {"c":"d"},
+                        "ext-plugin-post-resp": {"e":"f"}
                     },
                     "upstream": {
                         "nodes": {
@@ -115,8 +116,8 @@ hello world
 --- error_log
 get conf token: 233
 --- no_error_log
-[error]
 flush conf token lrucache
+[error]
 --- grep_error_log eval
 qr/(sending|receiving) rpc type: \d data length:/
 --- grep_error_log_out
@@ -136,6 +137,14 @@ sending rpc type: 2 data length:
 receiving rpc type: 2 data length:
 sending rpc type: 2 data length:
 receiving rpc type: 2 data length:
+sending rpc type: 1 data length:
+receiving rpc type: 1 data length:
+sending rpc type: 1 data length:
+receiving rpc type: 1 data length:
+sending rpc type: 4 data length:
+receiving rpc type: 4 data length:
+sending rpc type: 4 data length:
+receiving rpc type: 4 data length:
 
 
 
@@ -216,7 +225,7 @@ EXPIRE 3600
     }
 --- error_log
 runner exited with reason: exit, status: 111
-respawn runner 3 seconds later with cmd: ["t\/plugin\/ext-plugin\/runner.sh","0.1"]
+respawn runner 3 seconds later with cmd: ["t/plugin/ext-plugin/runner.sh","0.1"]
 
 
 
@@ -268,11 +277,17 @@ sending rpc type: 1 data length:
 receiving rpc type: 1 data length:
 sending rpc type: 1 data length:
 receiving rpc type: 1 data length:
+sending rpc type: 1 data length:
+receiving rpc type: 1 data length:
+sending rpc type: 1 data length:
+receiving rpc type: 1 data length:
+sending rpc type: 1 data length:
+receiving rpc type: 1 data length:
+sending rpc type: 1 data length:
+receiving rpc type: 1 data length:
 --- error_log
 flush conf token lrucache
 flush conf token in shared dict
---- no_error_log
-[error]
 
 
 
@@ -334,8 +349,6 @@ hello world
     }
 --- error_log eval
 qr/get conf token: 233 conf: \[(\{"value":"bar","name":"foo"\}|\{"name":"foo","value":"bar"\}),(\{"value":"dog","name":"cat"\}|\{"name":"cat","value":"dog"\})\]/
---- no_error_log
-[error]
 
 
 
@@ -384,8 +397,6 @@ hello world
 --- error_log
 refresh cache and try again
 flush conf token in shared dict
---- no_error_log
-[error]
 
 
 
@@ -549,8 +560,6 @@ hello world
     }
 --- error_log eval
 qr/get conf token: 233 conf: \[(\{"value":"bar","name":"foo"\}|\{"name":"foo","value":"bar"\}),(\{"value":"dog","name":"cat"\}|\{"name":"cat","value":"dog"\})\]/
---- no_error_log
-[error]
 
 
 
@@ -571,3 +580,125 @@ qr/get conf token: 233 conf: \[(\{"value":"bar","name":"foo"\}|\{"name":"foo","v
             end
         }
     }
+
+
+
+=== TEST 19: default allow_degradation
+--- config
+    location /t {
+        content_by_lua_block {
+            local json = require("toolkit.json")
+            local t = require("lib.test_admin")
+
+            local code, message, res = t.test('/apisix/admin/routes/1',
+                ngx.HTTP_PUT,
+                 [[{
+                    "uri": "/hello",
+                    "plugins": {
+                        "ext-plugin-post-req": {
+                            "conf": [
+                                {"name":"foo", "value":"bar"},
+                                {"name":"cat", "value":"dog"}
+                            ]
+                        }
+                    },
+                    "upstream": {
+                        "nodes": {
+                            "127.0.0.1:1980": 1
+                        },
+                        "type": "roundrobin"
+                    }
+                }]]
+            )
+
+            if code >= 300 then
+                ngx.status = code
+                ngx.say(message)
+                return
+            end
+
+            ngx.say(message)
+        }
+    }
+--- response_body
+passed
+
+
+
+=== TEST 20: ext-plugin wrong, req reject
+--- request
+GET /hello
+--- extra_stream_config
+    server {
+        listen unix:$TEST_NGINX_HTML_DIR/nginx.sock1;
+
+        content_by_lua_block {
+            local ext = require("lib.ext-plugin")
+            ext.go({})
+        }
+    }
+--- error_code: 503
+--- error_log eval
+qr/failed to connect to the unix socket/
+
+
+
+=== TEST 21: open allow_degradation
+--- config
+    location /t {
+        content_by_lua_block {
+            local json = require("toolkit.json")
+            local t = require("lib.test_admin")
+
+            local code, message, res = t.test('/apisix/admin/routes/1',
+                ngx.HTTP_PUT,
+                 [[{
+                    "uri": "/hello",
+                    "plugins": {
+                        "ext-plugin-post-req": {
+                            "conf": [
+                                {"name":"foo", "value":"bar"},
+                                {"name":"cat", "value":"dog"}
+                            ],
+                            "allow_degradation": true
+                        }
+                    },
+                    "upstream": {
+                        "nodes": {
+                            "127.0.0.1:1980": 1
+                        },
+                        "type": "roundrobin"
+                    }
+                }]]
+            )
+
+            if code >= 300 then
+                ngx.status = code
+                ngx.say(message)
+                return
+            end
+
+            ngx.say(message)
+        }
+    }
+--- response_body
+passed
+
+
+
+=== TEST 22: ext-plugin wrong, req access
+--- request
+GET /hello
+--- extra_stream_config
+    server {
+        listen unix:$TEST_NGINX_HTML_DIR/nginx.sock1;
+
+        content_by_lua_block {
+            local ext = require("lib.ext-plugin")
+            ext.go({})
+        }
+    }
+--- response_body
+hello world
+--- error_log eval
+qr/Plugin Runner.*allow degradation/

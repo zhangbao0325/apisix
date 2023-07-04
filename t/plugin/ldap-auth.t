@@ -14,6 +14,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+BEGIN {
+    $ENV{VAULT_TOKEN} = "root";
+}
+
 use t::APISIX 'no_plan';
 
 repeat_each(2);
@@ -25,10 +29,6 @@ add_block_preprocessor(sub {
 
     if (!$block->request) {
         $block->set_value("request", "GET /t");
-    }
-
-    if ((!defined $block->error_log) && (!defined $block->no_error_log)) {
-        $block->set_value("no_error_log", "[error]");
     }
 });
 
@@ -90,23 +90,12 @@ done
                             "user_dn": "cn=user01,ou=users,dc=example,dc=org"
                         }
                     }
-                }]],
-                [[{
-                    "node": {
-                        "value": {
-                            "username": "user01",
-                            "plugins": {
-                                "ldap-auth": {
-                                    "user_dn": "cn=user01,ou=users,dc=example,dc=org"
-                                }
-                            }
-                        }
-                    },
-                    "action": "set"
                 }]]
                 )
 
-            ngx.status = code
+            if code >= 300 then
+                ngx.status = code
+            end
             ngx.say(body)
         }
     }
@@ -167,9 +156,11 @@ GET /hello
 Authorization: Bad_header Zm9vOmZvbwo=
 --- error_code: 401
 --- response_body
-{"message":"Invalid authorization header format"}
---- no_error_log
-[error]
+{"message":"Invalid authorization in request"}
+--- grep_error_log eval
+qr/Invalid authorization header format/
+--- grep_error_log_out
+Invalid authorization header format
 
 
 
@@ -180,9 +171,11 @@ GET /hello
 Authorization: Basic aca_a
 --- error_code: 401
 --- response_body
-{"message":"Failed to decode authentication header: aca_a"}
---- no_error_log
-[error]
+{"message":"Invalid authorization in request"}
+--- grep_error_log eval
+qr/Failed to decode authentication header: aca_a/
+--- grep_error_log_out
+Failed to decode authentication header: aca_a
 
 
 
@@ -193,9 +186,11 @@ GET /hello
 Authorization: Basic Zm9v
 --- error_code: 401
 --- response_body
-{"message":"Split authorization err: invalid decoded data: foo"}
---- no_error_log
-[error]
+{"message":"Invalid authorization in request"}
+--- grep_error_log eval
+qr/Split authorization err: invalid decoded data: foo/
+--- grep_error_log_out
+Split authorization err: invalid decoded data: foo
 
 
 
@@ -207,6 +202,8 @@ Authorization: Basic Zm9vOmZvbwo=
 --- error_code: 401
 --- response_body
 {"message":"Invalid user authorization"}
+--- error_log
+The supplied credential is invalid
 
 
 
@@ -307,7 +304,7 @@ find consumer user01
                 ngx.HTTP_GET,
                 nil,
                 [[
-{"title":"work with route or service object","required":["base_dn","ldap_uri"],"properties":{"base_dn":{"type":"string"},"ldap_uri":{"type":"string"},"use_tls":{"type":"boolean"},"disable":{"type":"boolean"},"uid":{"type":"string"}},"type":"object"}
+{"title":"work with route or service object","required":["base_dn","ldap_uri"],"properties":{"base_dn":{"type":"string"},"ldap_uri":{"type":"string"},"use_tls":{"type":"boolean"},"tls_verify":{"type":"boolean"},"uid":{"type":"string"}},"type":"object"}
                 ]]
                 )
             ngx.status = code
@@ -343,8 +340,277 @@ find consumer user01
                 ngx.HTTP_GET,
                 nil,
                 [[
-{"title":"work with route or service object","required":["base_dn","ldap_uri"],"properties":{"base_dn":{"type":"string"},"ldap_uri":{"type":"string"},"use_tls":{"type":"boolean"},"disable":{"type":"boolean"},"uid":{"type":"string"}},"type":"object"}                ]]
+{"title":"work with route or service object","required":["base_dn","ldap_uri"],"properties":{"base_dn":{"type":"string"},"ldap_uri":{"type":"string"},"use_tls":{"type":"boolean"},"tls_verify":{"type":"boolean"},"uid":{"type":"string"}},"type":"object"}                ]]
                 )
             ngx.status = code
         }
     }
+
+
+
+=== TEST 17: enable ldap-auth with tls
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin").test
+            local code, body = t('/apisix/admin/routes/1',
+                ngx.HTTP_PUT,
+                [[{
+                    "plugins": {
+                        "ldap-auth": {
+                            "base_dn": "ou=users,dc=example,dc=org",
+                            "ldap_uri": "localhost:1636",
+                            "uid": "cn",
+                            "use_tls": true
+                        }
+                    },
+                    "upstream": {
+                        "nodes": {
+                            "127.0.0.1:1980": 1
+                        },
+                        "type": "roundrobin"
+                    },
+                    "uri": "/hello"
+                }]]
+                )
+
+            if code >= 300 then
+                ngx.status = code
+            end
+            ngx.say(body)
+        }
+    }
+--- response_body
+passed
+
+
+
+=== TEST 18: verify
+--- request
+GET /hello
+--- more_headers
+Authorization: Basic dXNlcjAxOnBhc3N3b3JkMQ==
+--- response_body
+hello world
+--- error_log
+find consumer user01
+
+
+
+=== TEST 19: enable ldap-auth with tls, verify CA
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin").test
+            local code, body = t('/apisix/admin/routes/1',
+                ngx.HTTP_PUT,
+                [[{
+                    "plugins": {
+                        "ldap-auth": {
+                            "base_dn": "ou=users,dc=example,dc=org",
+                            "ldap_uri": "localhost:1636",
+                            "uid": "cn",
+                            "use_tls": true,
+                            "tls_verify": true
+                        }
+                    },
+                    "upstream": {
+                        "nodes": {
+                            "127.0.0.1:1980": 1
+                        },
+                        "type": "roundrobin"
+                    },
+                    "uri": "/hello"
+                }]]
+                )
+
+            if code >= 300 then
+                ngx.status = code
+            end
+            ngx.say(body)
+        }
+    }
+--- response_body
+passed
+
+
+
+=== TEST 20: verify
+--- request
+GET /hello
+--- more_headers
+Authorization: Basic dXNlcjAxOnBhc3N3b3JkMQ==
+--- response_body
+hello world
+--- error_log
+find consumer user01
+
+
+
+=== TEST 21: set ldap-auth conf: user_dn uses secret ref
+--- request
+GET /t
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin").test
+            -- put secret vault config
+            local code, body = t('/apisix/admin/secrets/vault/test1',
+                ngx.HTTP_PUT,
+                [[{
+                    "uri": "http://127.0.0.1:8200",
+                    "prefix" : "kv/apisix",
+                    "token" : "root"
+                }]]
+                )
+
+            if code >= 300 then
+                ngx.status = code
+                return ngx.say(body)
+            end
+
+            -- change consumer with secrets ref: vault
+            code, body = t('/apisix/admin/consumers',
+                ngx.HTTP_PUT,
+                [[{
+                    "username": "user01",
+                    "plugins": {
+                        "ldap-auth": {
+                            "user_dn": "$secret://vault/test1/user01/user_dn"
+                        }
+                    }
+                }]]
+                )
+            if code >= 300 then
+                ngx.status = code
+                return ngx.say(body)
+            end
+
+            -- set route
+            code, body = t('/apisix/admin/routes/1',
+                ngx.HTTP_PUT,
+                [[{
+                    "plugins": {
+                        "ldap-auth": {
+                            "base_dn": "ou=users,dc=example,dc=org",
+                            "ldap_uri": "127.0.0.1:1389",
+                            "uid": "cn"
+                        }
+                    },
+                    "upstream": {
+                        "nodes": {
+                            "127.0.0.1:1980": 1
+                        },
+                        "type": "roundrobin"
+                    },
+                    "uri": "/hello"
+                }]]
+                )
+
+            if code >= 300 then
+                ngx.status = code
+            end
+            ngx.say(body)
+        }
+    }
+--- response_body
+passed
+
+
+
+=== TEST 22: store secret into vault
+--- exec
+VAULT_TOKEN='root' VAULT_ADDR='http://0.0.0.0:8200' vault kv put kv/apisix/user01 user_dn="cn=user01,ou=users,dc=example,dc=org"
+--- response_body
+Success! Data written to: kv/apisix/user01
+
+
+
+=== TEST 23: verify
+--- request
+GET /hello
+--- more_headers
+Authorization: Basic dXNlcjAxOnBhc3N3b3JkMQ==
+--- response_body
+hello world
+--- error_log
+find consumer user01
+
+
+
+=== TEST 24: set ldap-auth conf with the token in an env var: user_dn uses secret ref
+--- request
+GET /t
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin").test
+            -- put secret vault config
+            local code, body = t('/apisix/admin/secrets/vault/test1',
+                ngx.HTTP_PUT,
+                [[{
+                    "uri": "http://127.0.0.1:8200",
+                    "prefix" : "kv/apisix",
+                    "token" : "$ENV://VAULT_TOKEN"
+                }]]
+                )
+            if code >= 300 then
+                ngx.status = code
+                return ngx.say(body)
+            end
+            -- change consumer with secrets ref: vault
+            code, body = t('/apisix/admin/consumers',
+                ngx.HTTP_PUT,
+                [[{
+                    "username": "user01",
+                    "plugins": {
+                        "ldap-auth": {
+                            "user_dn": "$secret://vault/test1/user01/user_dn"
+                        }
+                    }
+                }]]
+                )
+            if code >= 300 then
+                ngx.status = code
+                return ngx.say(body)
+            end
+            -- set route
+            code, body = t('/apisix/admin/routes/1',
+                ngx.HTTP_PUT,
+                [[{
+                    "plugins": {
+                        "ldap-auth": {
+                            "base_dn": "ou=users,dc=example,dc=org",
+                            "ldap_uri": "127.0.0.1:1389",
+                            "uid": "cn"
+                        }
+                    },
+                    "upstream": {
+                        "nodes": {
+                            "127.0.0.1:1980": 1
+                        },
+                        "type": "roundrobin"
+                    },
+                    "uri": "/hello"
+                }]]
+                )
+            if code >= 300 then
+                ngx.status = code
+            end
+            ngx.say(body)
+        }
+    }
+--- response_body
+passed
+
+
+
+=== TEST 25: verify
+--- request
+GET /hello
+--- more_headers
+Authorization: Basic dXNlcjAxOnBhc3N3b3JkMQ==
+--- response_body
+hello world
+--- error_log
+find consumer user01

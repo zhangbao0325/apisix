@@ -14,7 +14,13 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 --
+
+--- Get configuration information in Stand-alone mode.
+--
+-- @module core.config_yaml
+
 local config_local = require("apisix.core.config_local")
+local config_util  = require("apisix.core.config_util")
 local yaml         = require("tinyyaml")
 local log          = require("apisix.core.log")
 local json         = require("apisix.core.json")
@@ -22,6 +28,7 @@ local new_tab      = require("table.new")
 local check_schema = require("apisix.core.schema").check
 local profile      = require("apisix.core.profile")
 local lfs          = require("lfs")
+local file         = require("apisix.cli.file")
 local exiting      = ngx.worker.exiting
 local insert_tab   = table.insert
 local type         = type
@@ -100,6 +107,12 @@ local function read_apisix_yaml(premature, pre_mtime)
         return
     end
 
+    local ok, err = file.resolve_conf_var(apisix_yaml_new)
+    if not ok then
+        log.error("failed: failed to resolve variables:" .. err)
+        return
+    end
+
     apisix_yaml = apisix_yaml_new
     apisix_yaml_ctime = last_change_time
 end
@@ -130,12 +143,7 @@ local function sync_data(self)
 
     if self.values then
         for _, item in ipairs(self.values) do
-            if item.clean_handlers then
-                for _, clean_handler in ipairs(item.clean_handlers) do
-                    clean_handler(item)
-                end
-                item.clean_handlers = nil
-            end
+            config_util.fire_all_clean_handlers(item)
         end
         self.values = nil
     end
@@ -377,6 +385,8 @@ end
 function _M.init_worker()
     -- sync data in each non-master process
     ngx.timer.every(1, read_apisix_yaml)
+
+    return true
 end
 
 

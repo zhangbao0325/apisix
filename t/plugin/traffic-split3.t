@@ -26,10 +26,6 @@ add_block_preprocessor(sub {
     if (!$block->request) {
         $block->set_value("request", "GET /t");
     }
-
-    if (!$block->error_log && !$block->no_error_log) {
-        $block->set_value("no_error_log", "[error]");
-    }
 });
 
 run_tests();
@@ -130,36 +126,60 @@ location /t {
 --- config
     location /t {
         content_by_lua_block {
+            local json = require("toolkit.json")
             local t = require("lib.test_admin").test
+            local data = {
+                uri = "/server_port",
+                plugins = {
+                    ["traffic-split"] = {
+                        rules = { {
+                            match = {
+                                {
+                                    vars = {
+                                        {"arg_name", "==", "jack"},
+                                        {"arg_age", ">", "23"},
+                                        {"http_appkey", "~~", "[a-z]{1,5}"}
+                                    }
+                                }
+                            },
+                            weighted_upstreams = {
+                                {
+                                    upstream = {
+                                        name = "upstream_A",
+                                        type = "roundrobin",
+                                        nodes = {
+                                            ["127.0.0.1:1981"] = 20
+                                        }
+                                    },
+                                    weight = 2
+                                },
+                                {
+                                    upstream = {
+                                        name = "upstream_B",
+                                        type = "roundrobin",
+                                        nodes = {
+                                            ["127.0.0.1:1982"] = 10
+                                        }
+                                    },
+                                    weight = 2
+                                },
+                                {
+                                    weight = 1
+                                }
+                            }
+                        } }
+                    }
+                },
+                upstream = {
+                    type = "roundrobin",
+                    nodes = {
+                        ["127.0.0.1:1980"] = 1
+                    }
+                }
+            }
             local code, body = t('/apisix/admin/routes/1',
                 ngx.HTTP_PUT,
-                [=[{
-                    "uri": "/server_port",
-                    "plugins": {
-                        "traffic-split": {
-                            "rules": [
-                                {
-                                    "match": [
-                                        {
-                                            "vars": [["arg_name", "==", "jack"], ["arg_age", ">", "23"],["http_appkey", "~~", "[a-z]{1,5}"]]
-                                        }
-                                    ],
-                                    "weighted_upstreams": [
-                                        {"upstream": {"name": "upstream_A", "type": "roundrobin", "nodes": {"127.0.0.1:1981":20}}, "weight": 2},
-                                        {"upstream": {"name": "upstream_B", "type": "roundrobin", "nodes": {"127.0.0.1:1982":10}}, "weight": 2},
-                                        {"weight": 1}
-                                    ]
-                                }
-                            ]
-                        }
-                    },
-                    "upstream": {
-                            "type": "roundrobin",
-                            "nodes": {
-                                "127.0.0.1:1980": 1
-                            }
-                    }
-                }]=]
+                json.encode(data)
             )
             if code >= 300 then
                 ngx.status = code
@@ -218,29 +238,38 @@ location /t {
 --- config
     location /t {
         content_by_lua_block {
+            local json = require("toolkit.json")
             local t = require("lib.test_admin").test
+            local data = {
+                uri = "/server_port",
+                plugins = {
+                    ["traffic-split"] = {
+                        rules = { {
+                            weighted_upstreams = {
+                                {
+                                    upstream = {
+                                        name = "upstream_A",
+                                        type = "roundrobin",
+                                        nodes = {
+                                            {host = "foo.com", port = 80, weight = 0}
+                                        }
+                                    },
+                                    weight = 2
+                                }
+                            }
+                        } }
+                    }
+                },
+                upstream = {
+                    type = "roundrobin",
+                    nodes = {
+                        ["127.0.0.1:1980"] = 1
+                    }
+                }
+            }
             local code, body = t('/apisix/admin/routes/1',
                 ngx.HTTP_PUT,
-                [=[{
-                    "uri": "/server_port",
-                    "plugins": {
-                        "traffic-split": {
-                            "rules": [
-                                {
-                                    "weighted_upstreams": [
-                                        {"upstream": {"name": "upstream_A", "type": "roundrobin", "nodes": [{"host":"foo.com", "port": 80, "weight": 0}]}, "weight": 2}
-                                    ]
-                                }
-                            ]
-                        }
-                    },
-                    "upstream": {
-                            "type": "roundrobin",
-                            "nodes": {
-                                "127.0.0.1:1980": 1
-                            }
-                    }
-                }]=]
+                json.encode(data)
             )
             if code >= 300 then
                 ngx.status = code
@@ -266,35 +295,51 @@ qr/dns resolver domain: foo.com to \d+.\d+.\d+.\d+/
 --- config
     location /t {
         content_by_lua_block {
+            local json = require("toolkit.json")
             local t = require("lib.test_admin").test
+            local data = {
+                uri = "/server_port",
+                plugins = {
+                    ["traffic-split"] = {
+                        rules = { {
+                            match = {
+                                {
+                                    vars = {
+                                        {"arg_name", "==", "jack"},
+                                        {"arg_age", ">", "23"},
+                                        {"http_appkey", "~~", "[a-z]{1,5}"}
+                                    }
+                                }
+                            },
+                            weighted_upstreams = {
+                                {
+                                    upstream = {
+                                        name = "upstream_A",
+                                        type = "roundrobin",
+                                        nodes = {
+                                            {host = "127.0.0.1", port = 1981, weight = 2},
+                                            {host = "127.0.0.1", port = 1982, weight = 2}
+                                        }
+                                    },
+                                    weight = 4
+                                },
+                                {
+                                    weight = 1
+                                }
+                            }
+                        } }
+                    }
+                },
+                upstream = {
+                    type = "roundrobin",
+                    nodes = {
+                        ["127.0.0.1:1980"] = 1
+                    }
+                }
+            }
             local code, body = t('/apisix/admin/routes/1',
                 ngx.HTTP_PUT,
-                [=[{
-                    "uri": "/server_port",
-                    "plugins": {
-                        "traffic-split": {
-                            "rules": [
-                                {
-                                    "match": [
-                                        {
-                                            "vars": [["arg_name", "==", "jack"], ["arg_age", ">", "23"],["http_appkey", "~~", "[a-z]{1,5}"]]
-                                        }
-                                    ],
-                                    "weighted_upstreams": [
-                                        {"upstream": {"name": "upstream_A", "type": "roundrobin", "nodes": [{"host":"127.0.0.1", "port":1981, "weight": 2}, {"host":"127.0.0.1", "port":1982, "weight": 2}]}, "weight": 4},
-                                        {"weight": 1}
-                                    ]
-                                }
-                            ]
-                        }
-                    },
-                    "upstream": {
-                            "type": "roundrobin",
-                            "nodes": {
-                                "127.0.0.1:1980": 1
-                            }
-                    }
-                }]=]
+                json.encode(data)
             )
             if code >= 300 then
                 ngx.status = code
@@ -332,36 +377,60 @@ location /t {
 --- config
     location /t {
         content_by_lua_block {
+            local json = require("toolkit.json")
             local t = require("lib.test_admin").test
+            local data = {
+                uri = "/server_port",
+                plugins = {
+                    ["traffic-split"] = {
+                        rules = { {
+                            match = {
+                                {
+                                    vars = {
+                                        {"arg_name", "==", "jack"},
+                                        {"arg_age", ">", "23"},
+                                        {"http_appkey", "~~", "[a-z]{1,5}"}
+                                    }
+                                }
+                            },
+                            weighted_upstreams = {
+                                {
+                                    upstream = {
+                                        name = "upstream_A",
+                                        type = "roundrobin",
+                                        nodes = {
+                                            {host = "127.0.0.1", port = 1981, weight = 2}
+                                        }
+                                    },
+                                    weight = 2
+                                },
+                                {
+                                    upstream = {
+                                        name = "upstream_B",
+                                        type = "roundrobin",
+                                        nodes = {
+                                            {host = "127.0.0.1", port = 1982, weight = 2}
+                                        }
+                                    },
+                                    weight = 2
+                                },
+                                {
+                                    weight = 1
+                                }
+                            }
+                        } }
+                    }
+                },
+                upstream = {
+                    type = "roundrobin",
+                    nodes = {
+                        ["127.0.0.1:1980"] = 1
+                    }
+                }
+            }
             local code, body = t('/apisix/admin/routes/1',
                 ngx.HTTP_PUT,
-                [=[{
-                    "uri": "/server_port",
-                    "plugins": {
-                        "traffic-split": {
-                            "rules": [
-                                {
-                                    "match": [
-                                        {
-                                            "vars": [["arg_name", "==", "jack"], ["arg_age", ">", "23"],["http_appkey", "~~", "[a-z]{1,5}"]]
-                                        }
-                                    ],
-                                    "weighted_upstreams": [
-                                        {"upstream": {"name": "upstream_A", "type": "roundrobin", "nodes": [{"host":"127.0.0.1", "port":1981, "weight": 2}]}, "weight": 2},
-                                        {"upstream": {"name": "upstream_B", "type": "roundrobin", "nodes": [{"host":"127.0.0.1", "port":1982, "weight": 2}]}, "weight": 2},
-                                        {"weight": 1}
-                                    ]
-                                }
-                            ]
-                        }
-                    },
-                    "upstream": {
-                            "type": "roundrobin",
-                            "nodes": {
-                                "127.0.0.1:1980": 1
-                            }
-                    }
-                }]=]
+                json.encode(data)
             )
             if code >= 300 then
                 ngx.status = code
@@ -399,30 +468,48 @@ location /t {
 --- config
     location /t {
         content_by_lua_block {
+            local json = require("toolkit.json")
             local t = require("lib.test_admin").test
+            local data = {
+                uri = "/server_port",
+                plugins = {
+                    ["traffic-split"] = {
+                        rules = { {
+                            weighted_upstreams = {
+                                {
+                                    upstream = {
+                                        name = "upstream_A",
+                                        type = "roundrobin",
+                                        nodes = {
+                                            {host = "127.0.0.1", port = 1981, weight = 2}
+                                        }
+                                    },
+                                    weight = 2
+                                },
+                                {
+                                    upstream = {
+                                        name = "upstream_B",
+                                        type = "roundrobin",
+                                        nodes = {
+                                            {host = "127.0.0.1", port = 1982, weight = 2}
+                                        }
+                                    },
+                                    weight = 2
+                                }
+                            }
+                        } }
+                    }
+                },
+                upstream = {
+                    type = "roundrobin",
+                    nodes = {
+                        ["127.0.0.1:1980"] = 1
+                    }
+                }
+            }
             local code, body = t('/apisix/admin/routes/1',
                 ngx.HTTP_PUT,
-                [=[{
-                    "uri": "/server_port",
-                    "plugins": {
-                        "traffic-split": {
-                            "rules": [
-                                {
-                                    "weighted_upstreams": [
-                                        {"upstream": {"name": "upstream_A", "type": "roundrobin", "nodes": [{"host":"127.0.0.1", "port":1981, "weight": 2}]}, "weight": 2},
-                                        {"upstream": {"name": "upstream_B", "type": "roundrobin", "nodes": [{"host":"127.0.0.1", "port":1982, "weight": 2}]}, "weight": 2}
-                                    ]
-                                }
-                            ]
-                        }
-                    },
-                    "upstream": {
-                            "type": "roundrobin",
-                            "nodes": {
-                                "127.0.0.1:1980": 1
-                            }
-                    }
-                }]=]
+                json.encode(data)
             )
             if code >= 300 then
                 ngx.status = code
@@ -466,30 +553,41 @@ upstream_key: roundrobin#route_1_1
 --- config
     location /t {
         content_by_lua_block {
+            local json = require("toolkit.json")
             local t = require("lib.test_admin").test
+            local data = {
+                uri = "/server_port",
+                plugins = {
+                    ["traffic-split"] = {
+                        rules = { {
+                            weighted_upstreams = {
+                                {
+                                    upstream = {
+                                        name = "upstream_A",
+                                        type = "roundrobin",
+                                        nodes = {
+                                            {host = "127.0.0.1", port = 1981, weight = 2}
+                                        }
+                                    },
+                                    weight = 1
+                                },
+                                {
+                                 weight = 1
+                                }
+                            }
+                        } }
+                    }
+                },
+                upstream = {
+                    type = "roundrobin",
+                    nodes = {
+                        ["127.0.0.1:1980"] = 1
+                    }
+                }
+            }
             local code, body = t('/apisix/admin/routes/1',
                 ngx.HTTP_PUT,
-                [=[{
-                    "uri": "/server_port",
-                    "plugins": {
-                        "traffic-split": {
-                            "rules": [
-                                {
-                                    "weighted_upstreams": [
-                                        {"upstream": {"name": "upstream_A", "type": "roundrobin", "nodes": [{"host":"127.0.0.1", "port":1981, "weight": 2}]}, "weight": 1},
-                                        {"weight": 1}
-                                    ]
-                                }
-                            ]
-                        }
-                    },
-                    "upstream": {
-                            "type": "roundrobin",
-                            "nodes": {
-                                "127.0.0.1:1980": 1
-                            }
-                    }
-                }]=]
+                json.encode(data)
             )
             if code >= 300 then
                 ngx.status = code
@@ -529,35 +627,49 @@ upstream_key: roundrobin#route_1_1
 --- config
     location /t {
         content_by_lua_block {
+            local json = require("toolkit.json")
             local t = require("lib.test_admin").test
+            local data = {
+                uri = "/server_port",
+                plugins = {
+                    ["traffic-split"] = {
+                        rules = { {
+                            match = {
+                                {
+                                    vars = {
+                                        {"http_x-api-appkey", "==", "api-key"}
+                                    }
+                                }
+                            },
+                            weighted_upstreams = {
+                                {
+                                    upstream = {
+                                        name = "upstream_A",
+                                        type = "roundrobin",
+                                        nodes = {
+                                            {host = "127.0.0.1", port = 1981, weight = 2},
+                                            {host = "127.0.0.1", port = 1982, weight = 2}
+                                        }
+                                    },
+                                    weight = 4
+                                },
+                                {
+                                 weight = 1
+                                }
+                            }
+                        } }
+                    }
+                },
+                upstream = {
+                    type = "roundrobin",
+                    nodes = {
+                        ["127.0.0.1:1980"] = 1
+                    }
+                }
+            }
             local code, body = t('/apisix/admin/routes/1',
                 ngx.HTTP_PUT,
-                [=[{
-                    "uri": "/server_port",
-                    "plugins": {
-                        "traffic-split": {
-                            "rules": [
-                                {
-                                    "match": [
-                                        {
-                                            "vars": [["http_x-api-appkey", "==", "api-key"]]
-                                        }
-                                    ],
-                                    "weighted_upstreams": [
-                                        {"upstream": {"name": "upstream_A", "type": "roundrobin", "nodes": [{"host":"127.0.0.1", "port":1981, "weight": 2}, {"host":"127.0.0.1", "port":1982, "weight": 2}]}, "weight": 4},
-                                        {"weight": 1}
-                                    ]
-                                }
-                            ]
-                        }
-                    },
-                    "upstream": {
-                            "type": "roundrobin",
-                            "nodes": {
-                                "127.0.0.1:1980": 1
-                            }
-                    }
-                }]=]
+                json.encode(data)
             )
             if code >= 300 then
                 ngx.status = code
@@ -595,35 +707,51 @@ location /t {
 --- config
     location /t {
         content_by_lua_block {
+            local json = require("toolkit.json")
             local t = require("lib.test_admin").test
+            local data = {
+                uri = "/server_port",
+                plugins = {
+                    ["traffic-split"] = {
+                        rules = { {
+                            match = {
+                                {
+                                    vars = {
+                                        {"arg_x-api-name", "==", "jack"},
+                                        {"arg_x-api-age", ">", "23"},
+                                        {"http_x-api-appkey", "~~", "[a-z]{1,5}"}
+                                    }
+                                }
+                            },
+                            weighted_upstreams = {
+                                {
+                                    upstream = {
+                                        name = "upstream_A",
+                                        type = "roundrobin",
+                                        nodes = {
+                                            {host = "127.0.0.1", port = 1981, weight = 2},
+                                            {host = "127.0.0.1", port = 1982, weight = 2}
+                                        }
+                                    },
+                                    weight = 4
+                                },
+                                {
+                                 weight = 1
+                                }
+                            }
+                        } }
+                    }
+                },
+                upstream = {
+                    type = "roundrobin",
+                    nodes = {
+                        ["127.0.0.1:1980"] = 1
+                    }
+                }
+            }
             local code, body = t('/apisix/admin/routes/1',
                 ngx.HTTP_PUT,
-                [=[{
-                    "uri": "/server_port",
-                    "plugins": {
-                        "traffic-split": {
-                            "rules": [
-                                {
-                                    "match": [
-                                        {
-                                            "vars": [["arg_x-api-name", "==", "jack"], ["arg_x-api-age", ">", "23"],["http_x-api-appkey", "~~", "[a-z]{1,5}"]]
-                                        }
-                                    ],
-                                    "weighted_upstreams": [
-                                        {"upstream": {"name": "upstream_A", "type": "roundrobin", "nodes": [{"host":"127.0.0.1", "port":1981, "weight": 2}, {"host":"127.0.0.1", "port":1982, "weight": 2}]}, "weight": 4},
-                                        {"weight": 1}
-                                    ]
-                                }
-                            ]
-                        }
-                    },
-                    "upstream": {
-                            "type": "roundrobin",
-                            "nodes": {
-                                "127.0.0.1:1980": 1
-                            }
-                    }
-                }]=]
+                json.encode(data)
             )
             if code >= 300 then
                 ngx.status = code

@@ -15,8 +15,13 @@
 -- limitations under the License.
 --
 
-local file = require("apisix.cli.file")
+--- Get configuration information.
+--
+-- @module core.config_local
+
+local file   = require("apisix.cli.file")
 local schema = require("apisix.cli.schema")
+local error  = error
 
 
 local _M = {}
@@ -29,7 +34,27 @@ function _M.clear_cache()
     config_data = nil
 end
 
-
+---
+-- Get the local config info.
+-- The configuration information consists of two parts, user-defined configuration in
+-- `conf/config.yaml` and default configuration in `conf/config-default.yaml`. The configuration
+-- of the same name present in `conf/config.yaml` will overwrite `conf/config-default.yaml`.
+-- The final full configuration is `conf/config.yaml` and the default configuration in
+-- `conf/config-default.yaml` that is not overwritten.
+--
+-- @function core.config_local.local_conf
+-- @treturn table The configuration information.
+-- @usage
+-- -- Given a config item in `conf/config.yaml`:
+-- --
+-- -- apisix:
+-- --   ssl:
+-- --     fallback_sni: "a.test2.com"
+-- --
+-- -- you can get the value of `fallback_sni` by:
+-- local local_conf = core.config.local_conf()
+-- local fallback_sni = core.table.try_read_attr(
+--                        local_conf, "apisix", "ssl", "fallback_sni") -- "a.test2.com"
 function _M.local_conf(force)
     if not force and config_data then
         return config_data
@@ -41,7 +66,10 @@ function _M.local_conf(force)
     end
 
     -- fill the default value by the schema
-    schema.validate(default_conf)
+    local ok, err = schema.validate(default_conf)
+    if not ok then
+        error(err)
+    end
 
     config_data = default_conf
     return config_data

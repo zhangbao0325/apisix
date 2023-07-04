@@ -22,7 +22,7 @@ from public import initfuzz, run_test
 from boofuzz import s_block, s_delim, s_get, s_group, s_initialize, s_static, s_string
 
 def create_route():
-    command = '''curl -i http://127.0.0.1:9080/apisix/admin/routes/1 -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+    command = '''curl -i http://127.0.0.1:9180/apisix/admin/routes/1 -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
 {
     "uri": "/parameter*",
     "vars": [
@@ -44,7 +44,7 @@ def run():
 
     s_initialize(name="Request")
     with s_block("Request-Line"):
-        s_group("Method", ['GET', 'HEAD', 'POST', 'PUT', 'DELETE', 'CONNECT', 'OPTIONS', 'TRACE'])
+        s_group("Method", ['GET', 'HEAD', 'POST', 'PUT', 'DELETE', 'CONNECT', 'OPTIONS', 'TRACE', 'PURGE'])
         s_delim(" ", name='space-1')
         s_string("/parameter?name=jack", name='Request-URI')
         s_delim(" ", name='space-2')

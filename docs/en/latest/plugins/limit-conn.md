@@ -1,5 +1,10 @@
 ---
 title: limit-conn
+keywords:
+  - Apache APISIX
+  - API Gateway
+  - Limit Connection
+description: This document contains information about the Apache APISIX limit-con Plugin, you can use it to limits the number of concurrent requests to your services.
 ---
 
 <!--
@@ -21,38 +26,31 @@ title: limit-conn
 #
 -->
 
-## Summary
+## Description
 
-- [Name](#name)
-- [Attributes](#attributes)
-- [How To Enable](#how-to-enable)
-- [Test Plugin](#test-plugin)
-- [Disable Plugin](#disable-plugin)
-
-## Name
-
-Limiting request concurrency plugin.
+The `limit-con` Plugin limits the number of concurrent requests to your services.
 
 ## Attributes
 
-| Name               | Type    | Requirement | Default | Valid                                                                                     | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| ------------------ | ------- | ----------- | ------- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| conn               | integer | required    |         | conn > 0                                                                                  | the maximum number of concurrent requests allowed. Requests exceeding this ratio (and below `conn` + `burst`) will get delayed(the latency seconds is configured by `default_conn_delay`) to conform to this threshold.                                                                                                                                                                                                                                                                                                                                              |
-| burst              | integer | required    |         | burst >= 0                                                                                | the number of excessive concurrent requests (or connections) allowed to be delayed.                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| default_conn_delay | number  | required    |         | default_conn_delay > 0                                                                    | the latency seconds of request when concurrent requests exceeding `conn` but below (`conn` + `burst`).                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| only_use_default_delay  | boolean | optional    | false   | [true,false]                                                                              | enable the strict mode of the latency seconds. If you set this option to `true`, it will run strictly according to the latency seconds you set without additional calculation logic.                                                                                                                                                                                                                                                                                                                      |
-| key_type      | string  | optional    |   "var"   | ["var", "var_combination"] | the type of key. |
-| key           | string  | required    |         |  | the user specified key to limit the rate. If the `key_type` is "var", the key will be treated as a name of variable, like "remote_addr" or "consumer_name". If the `key_type` is "var_combination", the key will be a combination of variables, like "$remote_addr $consumer_name". If the value of the key is empty, `remote_addr` will be set as the default key.|
-| rejected_code      | string  | optional    | 503     | [200,...,599]                                                                             | the HTTP status code returned when the request exceeds `conn` + `burst` will be rejected.                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| rejected_msg       | string | optional                                |            | non-empty                                | the response body returned when the request exceeds `conn` + `burst` will be rejected.                                                                                                                                                                                                            |
-| allow_degradation              | boolean  | optional                                | false       |                                                                     | Whether to enable plugin degradation when the limit-conn function is temporarily unavailable. Allow requests to continue when the value is set to true, default false. |
+| Name                   | Type    | Required | Default | Valid values               | Description                                                                                                                                                                                                                                                                                                                                                                                           |
+| ---------------------- | ------- | -------- | ------- | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| conn                   | integer | True     |         | conn > 0                   | Maximum number of concurrent requests allowed. Requests exceeding this ratio (and below `conn` + `burst`) will be delayed (configured by `default_conn_delay`).                                                                                                                                                                                                                                       |
+| burst                  | integer | True     |         | burst >= 0                 | Number of additional concurrent requests allowed to be delayed per second. If the number exceeds this hard limit, they will get rejected immediately.                                                                                                                                                                                                                                                 |
+| default_conn_delay     | number  | True     |         | default_conn_delay > 0     | Delay in seconds to process the concurrent requests exceeding `conn` (and `conn` + `burst`).                                                                                                                                                                                                                                                                                                          |
+| only_use_default_delay | boolean | False    | false   | [true,false]               | When set to `true`, the Plugin will always set a delay of `default_conn_delay` and would not use any other calculations.                                                                                                                                                                                                                                                                              |
+| key_type               | string  | False    | "var"   | ["var", "var_combination"] | Type of user specified key to use.                                                                                                                                                                                                                                                                                                                                                                    |
+| key                    | string  | True     |         |                            | User specified key to base the request limiting on. If the `key_type` attribute is set to `"var"`, the key will be treated as a name of variable, like `remote_addr` or `consumer_name`. If the `key_type` is set to `"var_combination"`, the key will be a combination of variables, like `$remote_addr $consumer_name`. If the value of the key is empty, `remote_addr` will be set as the default key. |
+| rejected_code          | string  | False    | 503     | [200,...,599]              | HTTP status code returned when the requests exceeding the threshold are rejected.                                                                                                                                                                                                                                                                                                                     |
+| rejected_msg           | string  | False    |         | non-empty                  | Body of the response returned when the requests exceeding the threshold are rejected.                                                                                                                                                                                                                                                                                                                 |
+| allow_degradation      | boolean | False    | false   |                            | When set to `true` enables Plugin degradation when the Plugin is temporarily unavailable and allows requests to continue.                                                                                                                                                                                                                                                                             |
 
-## How To Enable
+## Enabling the Plugin
 
-Here's an example, enable the limit-conn plugin on the specified route when setting `key_type` to `var` :
+You can enable the Plugin on a Route as shown below:
 
 ```shell
-curl http://127.0.0.1:9080/apisix/admin/routes/1 -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+curl http://127.0.0.1:9180/apisix/admin/routes/1 \
+-H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
 {
     "methods": ["GET"],
     "uri": "/index.html",
@@ -75,10 +73,11 @@ curl http://127.0.0.1:9080/apisix/admin/routes/1 -H 'X-API-KEY: edd1c9f034335f13
 }'
 ```
 
-Here's an example, enable the limit-conn plugin on the specified route when setting `key_type` to `var_combination` :
+You can also configure the `key_type` to `var_combination` as shown:
 
 ```shell
-curl http://127.0.0.1:9080/apisix/admin/routes/1 -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+curl http://127.0.0.1:9180/apisix/admin/routes/1 \
+-H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
 {
     "methods": ["GET"],
     "uri": "/index.html",
@@ -101,17 +100,17 @@ curl http://127.0.0.1:9080/apisix/admin/routes/1 -H 'X-API-KEY: edd1c9f034335f13
 }'
 ```
 
-You also can complete the above operation through the web interface, first add a route, then add limit-conn plugin:
-![enable limit-conn plugin](../../../assets/images/plugin/limit-conn-1.png)
+## Example usage
 
-## Test Plugin
-
-The parameters of the plugin enabled above indicate that only one concurrent request is allowed. When more than one concurrent request is received, will return `503` directly.
+The example above configures the Plugin to only allow one connection on this route. When more than one request is received, the Plugin will respond with a `503` HTTP status code and reject the connection:
 
 ```shell
 curl -i http://127.0.0.1:9080/index.html?sleep=20 &
 
 curl -i http://127.0.0.1:9080/index.html?sleep=20
+```
+
+```shell
 <html>
 <head><title>503 Service Temporarily Unavailable</title></head>
 <body>
@@ -121,16 +120,13 @@ curl -i http://127.0.0.1:9080/index.html?sleep=20
 </html>
 ```
 
-This means that the limit request concurrency plugin is in effect.
-
 ## Disable Plugin
 
-When you want to disable the limit-conn plugin, it is very simple,
-you can delete the corresponding json configuration in the plugin configuration,
-no need to restart the service, it will take effect immediately:
+To disable the `limit-conn` Plugin, you can delete the corresponding JSON configuration from the Plugin configuration. APISIX will automatically reload and you do not have to restart for this to take effect.
 
 ```shell
-curl http://127.0.0.1:9080/apisix/admin/routes/1 -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+curl http://127.0.0.1:9180/apisix/admin/routes/1 \
+-H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
 {
     "methods": ["GET"],
     "uri": "/index.html",
@@ -146,4 +142,68 @@ curl http://127.0.0.1:9080/apisix/admin/routes/1 -H 'X-API-KEY: edd1c9f034335f13
 }'
 ```
 
-The limit-conn plugin has been disabled now. It works for other plugins.
+## Example of application scenarios
+
+### Limit the number of concurrent WebSocket connections
+
+Apache APISIX supports WebSocket proxy, we can use `limit-conn` plugin to limit the number of concurrent WebSocket connections.
+
+1. Create a Route, enable the WebSocket proxy and the `limit-conn` plugin.
+
+    ```shell
+    curl http://127.0.0.1:9180/apisix/admin/routes/1 \
+    -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+    {
+        "uri": "/ws",
+        "enable_websocket": true,
+        "plugins": {
+            "limit-conn": {
+                "conn": 1,
+                "burst": 0,
+                "default_conn_delay": 0.1,
+                "rejected_code": 503,
+                "key_type": "var",
+                "key": "remote_addr"
+            }
+        },
+        "upstream": {
+            "type": "roundrobin",
+            "nodes": {
+                "127.0.0.1:1980": 1
+            }
+        }
+    }'
+    ```
+
+    The above route enables the WebSocket proxy on `/ws`, and limits the number of concurrent WebSocket connections to 1. More than 1 concurrent WebSocket connection will return `503` to reject the request.
+
+2. Initiate a WebSocket request, and the connection is established successfully.
+
+    ```shell
+    curl --include \
+        --no-buffer \
+        --header "Connection: Upgrade" \
+        --header "Upgrade: websocket" \
+        --header "Sec-WebSocket-Key: x3JJHMbDL1EzLkh9GBhXDw==" \
+        --header "Sec-WebSocket-Version: 13" \
+        --http1.1 \
+        http://127.0.0.1:9080/ws
+    ```
+
+    ```shell
+    HTTP/1.1 101 Switching Protocols
+    ```
+
+3. Initiate the WebSocket request again in another terminal, the request will be rejected.
+
+    ```shell
+    HTTP/1.1 503 Service Temporarily Unavailable
+    ···
+    <html>
+    <head><title>503 Service Temporarily Unavailable</title></head>
+    <body>
+    <center><h1>503 Service Temporarily Unavailable</h1></center>
+    <hr><center>openresty</center>
+    </body>
+    </html>
+    ```

@@ -57,7 +57,7 @@ if [ $count_test_access_log -eq 0 ]; then
 fi
 
 count_access_log_off=`grep -c "access_log off;" conf/nginx.conf || true`
-if [ $count_access_log_off -eq 4 ]; then
+if [ $count_access_log_off -eq 5 ]; then
     echo "failed: nginx.conf file find access_log off; when enable access log"
     exit 1
 fi
@@ -92,7 +92,7 @@ if [ $count_test_access_log -eq 1 ]; then
 fi
 
 count_access_log_off=`grep -c "access_log off;" conf/nginx.conf || true`
-if [ $count_access_log_off -ne 4 ]; then
+if [ $count_access_log_off -ne 5 ]; then
     echo "failed: nginx.conf file doesn't find access_log off; when disable access log"
     exit 1
 fi
@@ -151,7 +151,7 @@ rm logs/error.log
 make init
 make run
 
-code=$(curl -v -k -i -m 20 -o /dev/null -s -w %{http_code} http://127.0.0.1:9080/apisix/admin/routes -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1')
+code=$(curl -v -k -i -m 20 -o /dev/null -s -w %{http_code} http://127.0.0.1:9180/apisix/admin/routes -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1')
 make stop
 
 if [ ! $code -eq 200 ]; then
@@ -187,12 +187,14 @@ echo "don't log uninitialized access log variable when the HTTP request is malfo
 # TLS upstream
 
 echo "
-apisix:
-    admin_api_mtls:
-        admin_ssl_cert: '../t/certs/apisix_admin_ssl.crt'
-        admin_ssl_cert_key: '../t/certs/apisix_admin_ssl.key'
-    port_admin: 9180
-    https_admin: true
+deployment:
+    admin:
+        admin_listen:
+            port: 9180
+        https_admin: true
+        admin_api_mtls:
+            admin_ssl_cert: '../t/certs/apisix_admin_ssl.crt'
+            admin_ssl_cert_key: '../t/certs/apisix_admin_ssl.key'
 nginx_config:
   http:
     access_log_format: '\"\$upstream_scheme://\$upstream_host\" \$ssl_server_name'
@@ -209,14 +211,14 @@ sleep 4
 tail -n 2 logs/access.log > output.log
 
 # APISIX
-if ! grep '"https://localhost" -' output.log; then
+if ! grep '"https://localhost:9180" -' output.log; then
     echo "failed: should find upstream scheme"
     cat output.log
     exit 1
 fi
 
 # admin
-if ! grep '"http://localhost" localhost' output.log; then
+if ! grep '"http://localhost:9180" localhost' output.log; then
     echo "failed: should find upstream scheme"
     cat output.log
     exit 1
@@ -251,7 +253,7 @@ echo "passed: stream access_log_format in nginx.conf is ok"
 make run
 sleep 0.1
 # sending single udp packet
-echo -n "hello" | nc -4u -w0 localhost 9200
+echo -n "hello" | nc -4u -w1 localhost 9200
 sleep 4
 tail -n 1 logs/access_stream.log > output.log
 

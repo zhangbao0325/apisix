@@ -21,22 +21,6 @@ title: Plugin Develop
 #
 -->
 
-## table of contents
-
-- [table of contents](#table-of-contents)
-- [where to put your plugins](#where-to-put-your-plugins)
-- [check dependencies](#check-dependencies)
-- [name, priority and the others](#name-priority-and-the-others)
-- [schema and check](#schema-and-check)
-- [choose phase to run](#choose-phase-to-run)
-- [implement the logic](#implement-the-logic)
-  - [conf parameter](#conf-parameter)
-  - [ctx parameter](#ctx-parameter)
-- [write test case](#write-test-case)
-  - [Attach the test-nginx execution process:](#attach-the-test-nginx-execution-process)
-  - [Register public API](#register-public-api)
-  - [Register control API](#register-control-api)
-
 This documentation is about developing plugin in Lua. For other languages,
 see [external plugin](./external-plugin.md).
 
@@ -58,6 +42,12 @@ For example, you can create a directory structure like this:
 │           └── plugins
 │               └── 3rd-party.lua
 ```
+
+:::note
+
+If you need to customize the directory of plugin, please create a subdirectory of `/apisix/plugins` under this directory.
+
+:::
 
 Then add this configuration into your `conf/config.yaml`:
 
@@ -100,7 +90,7 @@ nginx_config:
 ```
 
 The plugin itself provides the init method. It is convenient for plugins to perform some initialization after
-the plugin is loaded.
+the plugin is loaded. If you need to clean up the initialization, you can put it in the corresponding destroy method.
 
 Note : if the dependency of some plugin needs to be initialized when Nginx start, you may need to add logic to the initialization
 method "http_init" in the file __apisix/init.lua__, and you may need to add some processing on generated part of Nginx
@@ -154,12 +144,6 @@ Note: the order of the plugins is not related to the order of execution.
 To enable your plugin, copy this plugin list into `conf/config.yaml`, and add your plugin name. For instance:
 
 ```yaml
-apisix:
-  admin_key:
-    - name: "admin"
-      key: edd1c9f034335f136f87ad84b625c8f1 # using fixed API token has security risk, please update it when you deploy to production environment
-      role: admin
-
 plugins: # copied from config-default.yaml
   ...
   - your-plugin
@@ -232,7 +216,7 @@ end
 Note: the project has provided the public method "__core.schema.check__", which can be used directly to complete JSON
 verification.
 
-In addition, if the plugin needs to use some metadata, we can define the plugin `metadata_schema`, and then we can dynamically manage these metadata through the `admin api`. Example:
+In addition, if the plugin needs to use some metadata, we can define the plugin `metadata_schema`, and then we can dynamically manage these metadata through the `Admin API`. Example:
 
 ```lua
 local metadata_schema = {
@@ -275,7 +259,7 @@ Here is the consumer configuration for key-auth plugin:
 }
 ```
 
-It will be used when you try to create a [Consumer](https://github.com/apache/apisix/blob/master/docs/en/latest/admin-api.md#consumer)
+It will be used when you try to create a [Consumer](./admin-api.md#consumer)
 
 To validate the configuration, the plugin uses a schema like this:
 
@@ -309,6 +293,49 @@ function _M.check_schema(conf, schema_type)
 end
 ```
 
+### encrypted storage fields
+
+Specify the parameters to be stored encrypted. (Requires APISIX version >= 3.1.0)
+
+Some plugins require parameters to be stored encrypted, such as the `password` parameter of the `basic-auth` plugin. This plugin needs to specify in the `schema` which parameters need to be stored encrypted.
+
+```lua
+encrypt_fields = {"password"}
+```
+
+If it is a nested parameter, such as the `clickhouse.password` parameter of the `error-log-logger` plugin, it needs to be separated by `.`:
+
+```lua
+encrypt_fields = {"clickhouse.password"}
+```
+
+Currently not supported yet:
+
+1. more than two levels of nesting
+2. fields in arrays
+
+Parameters can be stored encrypted by specifying `encrypt_fields = {"password"}` in the `schema`. APISIX will provide the following functionality.
+
+- When adding and updating resources via the `Admin API`, APISIX automatically encrypts the parameters declared in `encrypt_fields` and stores them in etcd
+- When fetching resources via the `Admin API` and when running the plugin, APISIX automatically decrypts the parameters declared in `encrypt_fields`
+
+How to enable this feature?
+
+Enable `data_encryption` in `config.yaml`.
+
+```yaml
+apisix:
+    data_encryption:
+        enable: true
+        keyring:
+            - edd1c9f0985e76a2
+            - qeddd145sfvddff4
+```
+
+APISIX will try to decrypt the data with keys in the order of the keys in the keyring (only for parameters declared in `encrypt_fields`). If the decryption fails, the next key will be tried until the decryption succeeds.
+
+If none of the keys in `keyring` can decrypt the data, the original data is used.
+
 ## choose phase to run
 
 Determine which phase to run, generally access or rewrite. If you don't know the [OpenResty lifecycle](https://github.com/openresty/lua-nginx-module/blob/master/README.markdown#directives), it's
@@ -319,19 +346,32 @@ In APISIX, only the authentication logic can be run in the rewrite phase. Other 
 The following code snippet shows how to implement any logic relevant to the plugin in the OpenResty log phase.
 
 ```lua
-function _M.log(conf)
+function _M.log(conf, ctx)
 -- Implement logic here
 end
 ```
 
-**Note : we can't invoke `ngx.exit` or `core.respond.exit` in rewrite phase and access phase. if need to exit, just return the status and body, the plugin engine will make the exit happen with the returned status and body. [example](https://github.com/apache/apisix/blob/35269581e21473e1a27b11cceca6f773cad0192a/apisix/plugins/limit-count.lua#L177)**
+**Note : we can't invoke `ngx.exit`, `ngx.redirect` or `core.respond.exit` in rewrite phase and access phase. if need to exit, just return the status and body, the plugin engine will make the exit happen with the returned status and body. [example](https://github.com/apache/apisix/blob/35269581e21473e1a27b11cceca6f773cad0192a/apisix/plugins/limit-count.lua#L177)**
+
+### extra phase
+
+Besides OpenResty's phases, we also provide extra phases to satisfy specific purpose:
+
+* `delayed_body_filter`
+
+```lua
+function _M.delayed_body_filter(conf, ctx)
+    -- delayed_body_filter is called after body_filter
+    -- it is used by the tracing plugins to end the span right after body_filter
+end
+```
 
 ## implement the logic
 
 Write the logic of the plugin in the corresponding phase. There are two parameters `conf` and `ctx` in the phase method, take the `limit-conn` plugin configuration as an example.
 
 ```shell
-curl http://127.0.0.1:9080/apisix/admin/routes/1 -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+curl http://127.0.0.1:9180/apisix/admin/routes/1 -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
 {
     "methods": ["GET"],
     "uri": "/index.html",
@@ -388,6 +428,86 @@ function _M.access(conf, ctx)
 end
 ```
 
+## register public API
+
+A plugin can register API which exposes to the public. Take jwt-auth plugin as an example, this plugin registers `GET /apisix/plugin/jwt/sign` to allow client to sign its key:
+
+```lua
+local function gen_token()
+    --...
+end
+
+function _M.api()
+    return {
+        {
+            methods = {"GET"},
+            uri = "/apisix/plugin/jwt/sign",
+            handler = gen_token,
+        }
+    }
+end
+```
+
+Note that the public API will not be exposed by default, you will need to use the [public-api plugin](plugins/public-api.md) to expose it.
+
+## register control API
+
+If you only want to expose the API to the localhost or intranet, you can expose it via [Control API](./control-api.md).
+
+Take a look at example-plugin plugin:
+
+```lua
+local function hello()
+    local args = ngx.req.get_uri_args()
+    if args["json"] then
+        return 200, {msg = "world"}
+    else
+        return 200, "world\n"
+    end
+end
+
+
+function _M.control_api()
+    return {
+        {
+            methods = {"GET"},
+            uris = {"/v1/plugin/example-plugin/hello"},
+            handler = hello,
+        }
+    }
+end
+```
+
+If you don't change the default control API configuration, the plugin will be expose `GET /v1/plugin/example-plugin/hello` which can only be accessed via `127.0.0.1`. Test with the following command:
+
+```shell
+curl -i -X GET "http://127.0.0.1:9090/v1/plugin/example-plugin/hello"
+```
+
+[Read more about control API introduction](./control-api.md)
+
+## register custom variable
+
+We can use variables in many places of APISIX. For example, customizing log format in http-logger, using it as the key of `limit-*` plugins. In some situations, the builtin variables are not enough. Therefore, APISIX allows developers to register their variables globally, and use them as normal builtin variables.
+
+For instance, let's register a variable called `a6_labels_zone` to fetch the value of the `zone` label in a route:
+
+```
+local core = require "apisix.core"
+
+core.ctx.register_var("a6_labels_zone", function(ctx)
+    local route = ctx.matched_route and ctx.matched_route.value
+    if route and route.labels then
+        return route.labels.zone
+    end
+    return nil
+end)
+```
+
+After that, any get operation to `$a6_labels_zone` will call the registered getter to fetch the value.
+
+Note that the custom variables can't be used in features that depend on the Nginx directive, like `access_log_format`.
+
 ## write test case
 
 For functions, write and improve the test cases of various dimensions, do a comprehensive test for your plugin! The
@@ -433,64 +553,11 @@ The above test case represents a simple scenario. Most scenarios will require mu
 
 Additionally, there are some convenience testing endpoints which can be found [here](https://github.com/apache/apisix/blob/master/t/lib/server.lua#L36). For example, see [proxy-rewrite](https://github.com/apache/apisix/blob/master/t/plugin/proxy-rewrite.lua). In test 42, the upstream `uri` is made to redirect `/test?new_uri=hello` to `/hello` (which always returns `hello world`). In test 43, the response body is confirmed to equal `hello world`, meaning the proxy-rewrite configuration added with test 42 worked correctly.
 
-Refer the following [document](how-to-build.md#Step-4-Run-Test-Cases) to setup the testing framework.
+Refer the following [document](building-apisix.md) to setup the testing framework.
 
-### Attach the test-nginx execution process:
+### attach the test-nginx execution process:
 
 According to the path we configured in the makefile and some configuration items at the front of each __.t__ file, the
 framework will assemble into a complete nginx.conf file. "__t/servroot__" is the working directory of Nginx and start the
 Nginx instance. according to the information provided by the test case, initiate the http request and check that the
 return items of HTTP include HTTP status, HTTP response header, HTTP response body and so on.
-
-### Register public API
-
-A plugin can register API which exposes to the public. Take jwt-auth plugin as an example, this plugin registers `GET /apisix/plugin/jwt/sign` to allow client to sign its key:
-
-```lua
-local function gen_token()
-    --...
-end
-
-function _M.api()
-    return {
-        {
-            methods = {"GET"},
-            uri = "/apisix/plugin/jwt/sign",
-            handler = gen_token,
-        }
-    }
-end
-```
-
-Note that the public API is exposed to the public.
-You may need to use [interceptors](plugin-interceptors.md) to protect it.
-
-### Register control API
-
-If you only want to expose the API to the localhost or intranet, you can expose it via [Control API](./control-api.md).
-
-Take a look at example-plugin plugin:
-
-```lua
-local function hello()
-    local args = ngx.req.get_uri_args()
-    if args["json"] then
-        return 200, {msg = "world"}
-    else
-        return 200, "world\n"
-    end
-end
-
-
-function _M.control_api()
-    return {
-        {
-            methods = {"GET"},
-            uris = {"/v1/plugin/example-plugin/hello"},
-            handler = hello,
-        }
-    }
-end
-```
-
-If you don't change the default control API configuration, the plugin will be expose `GET /v1/plugin/example-plugin/hello` which can only be accessed via `127.0.0.1`.

@@ -27,15 +27,13 @@ add_block_preprocessor(sub {
     my $yaml_config = $block->yaml_config // <<_EOC_;
 apisix:
     node_listen: 1984
-    config_center: yaml
-    enable_admin: false
+deployment:
+    role: data_plane
+    role_data_plane:
+        config_provider: yaml
 _EOC_
 
     $block->set_value("yaml_config", $yaml_config);
-
-    if (!$block->no_error_log) {
-        $block->set_value("no_error_log", "[error]");
-    }
 });
 
 run_tests();
@@ -67,3 +65,25 @@ plugin_metadata:
 GET /hello
 --- error_log
 "remote_addr":"127.0.0.1"
+
+
+
+=== TEST 2: sanity
+--- apisix_yaml
+upstreams:
+  - id: 1
+    nodes:
+      "127.0.0.1:1980": 1
+    type: roundrobin
+routes:
+  -
+    uri: /hello
+    upstream_id: 1
+plugin_metadata:
+  - id: authz-casbin
+    model: 123
+#END
+--- request
+GET /hello
+--- error_log
+failed to check item data of [plugin_metadata]

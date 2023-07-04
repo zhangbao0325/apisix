@@ -45,6 +45,9 @@ luac.out
 *.orig
 *.rej
 t/servroot
+t/certs/*.csr
+t/certs/*.srl
+t/xds-library/libxds.h
 conf/apisix.uid
 conf/nginx.conf
 deps
@@ -65,6 +68,7 @@ t/lib/dubbo-backend/dubbo-backend-provider/target/
 !.gitmodules
 !.markdownlint.yml
 !.licenserc.yaml
+!.ignore_words
 conf/apisix.yaml
 conf/apisix-*.yaml
 conf/config-*.yaml
@@ -75,6 +79,12 @@ t/fuzzing/__pycache__/
 boofuzz-results/
 *.pyc
 *.wasm
+t/grpc_server_example/grpc_server_example
+t/plugin/grpc-web/grpc-web-server
+t/plugin/grpc-web/node_modules/
+pack
+pack-v*-linux.tgz*
+
 # release tar package
 *.tgz
 release/*

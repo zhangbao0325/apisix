@@ -48,8 +48,11 @@ _EOC_
         my $yaml_config = <<_EOC_;
 apisix:
     node_listen: 1984
-    config_center: yaml
     enable_admin: false
+deployment:
+    role: data_plane
+    role_data_plane:
+        config_provider: yaml
 _EOC_
 
         $block->set_value("yaml_config", $yaml_config);
@@ -71,10 +74,6 @@ _EOC_
     if (!$block->request) {
         $block->set_value("request", "GET /hello");
     }
-
-    if ((!defined $block->error_log) && (!defined $block->no_error_log)) {
-        $block->set_value("no_error_log", "[error]");
-    }
 });
 
 run_tests();
@@ -90,7 +89,7 @@ routes:
     plugins:
         dubbo-proxy:
             service_name: org.apache.dubbo.backend.DemoService
-            service_version: 0.0.0
+            service_version: 1.0.0
             method: hello
     upstream:
         nodes:
@@ -125,7 +124,7 @@ routes:
     plugins:
         dubbo-proxy:
             service_name: org.apache.dubbo.backend.DemoService
-            service_version: 0.0.0
+            service_version: 1.0.0
             method: hello
     upstream_id: 1
 --- more_headers
@@ -148,7 +147,7 @@ services:
         plugins:
             dubbo-proxy:
                 service_name: org.apache.dubbo.backend.DemoService
-                service_version: 0.0.0
+                service_version: 1.0.0
                 method: hello
         id: 1
         upstream_id: 1
@@ -162,7 +161,6 @@ dubbo success
 apisix:
     node_listen: 1984
     enable_admin: true
-    admin_key: null
 plugins:
     - key-auth
     - dubbo-proxy
@@ -202,7 +200,7 @@ plugins:
                     "plugins": {
                         "dubbo-proxy": {
                             "service_name": "org.apache.dubbo.backend.DemoService",
-                            "service_version": "0.0.0",
+                            "service_version": "1.0.0",
                             "method": "hello"
                         },
                         "key-auth": {}
@@ -230,7 +228,6 @@ passed
 apisix:
     node_listen: 1984
     enable_admin: true
-    admin_key: null
 plugins:
     - key-auth
     - dubbo-proxy
@@ -243,7 +240,6 @@ plugins:
 apisix:
     node_listen: 1984
     enable_admin: true
-    admin_key: null
 plugins:
     - key-auth
     - dubbo-proxy
@@ -266,7 +262,7 @@ routes:
             body: "hello world\n"
         dubbo-proxy:
             service_name: org.apache.dubbo.backend.DemoService
-            service_version: 0.0.0
+            service_version: 1.0.0
             method: hello
     upstream_id: 1
 
@@ -288,7 +284,7 @@ routes:
                 extra-arg-fruit: banana
         dubbo-proxy:
             service_name: org.apache.dubbo.backend.DemoService
-            service_version: 0.0.0
+            service_version: 1.0.0
             method: hello
     upstream_id: 1
 
@@ -307,8 +303,27 @@ routes:
     plugins:
         dubbo-proxy:
             service_name: org.apache.dubbo.backend.DemoService
-            service_version: 0.0.0
+            service_version: 1.0.0
     upstream_id: 1
 
 --- response_body
 dubbo success
+
+
+
+=== TEST 11: version mismatch
+--- apisix_yaml
+routes:
+  -
+    uri: /hello
+    plugins:
+        dubbo-proxy:
+            service_name: org.apache.dubbo.backend.DemoService
+            service_version: 0.1.0
+            method: hello
+    upstream_id: 1
+--- more_headers
+Extra-Arg-K: V
+--- error_code: 502
+--- error_log
+may be version or group mismatch

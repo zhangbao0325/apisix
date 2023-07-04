@@ -43,21 +43,18 @@ __DATA__
                     "desc": "new service"
                 }]],
                 [[{
-                    "node": {
-                        "value": {
-                            "upstream": {
-                                "nodes": {
-                                    "127.0.0.1:8080": 1
-                                },
-                                "type": "roundrobin"
+                    "value": {
+                        "upstream": {
+                            "nodes": {
+                                "127.0.0.1:8080": 1
                             },
-                            "desc": "new service"
+                            "type": "roundrobin"
                         },
-                        "key": "/apisix/services/5eeb3dc90f747328b2930b0b"
+                        "desc": "new service"
                     },
-                    "action": "set"
+                    "key": "/apisix/services/5eeb3dc90f747328b2930b0b"
                 }]]
-                )
+            )
 
             ngx.status = code
             ngx.say(body)
@@ -67,8 +64,6 @@ __DATA__
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -78,24 +73,21 @@ passed
         content_by_lua_block {
             local t = require("lib.test_admin").test
             local code, body = t('/apisix/admin/services/5eeb3dc90f747328b2930b0b',
-                 ngx.HTTP_GET,
-                 nil,
+                ngx.HTTP_GET,
+                nil,
                 [[{
-                    "node": {
-                        "value": {
-                            "upstream": {
-                                "nodes": {
-                                    "127.0.0.1:8080": 1
-                                },
-                                "type": "roundrobin"
+                    "value": {
+                        "upstream": {
+                            "nodes": {
+                                "127.0.0.1:8080": 1
                             },
-                            "desc": "new service"
+                            "type": "roundrobin"
                         },
-                        "key": "/apisix/services/5eeb3dc90f747328b2930b0b"
+                        "desc": "new service"
                     },
-                    "action": "get"
+                    "key": "/apisix/services/5eeb3dc90f747328b2930b0b"
                 }]]
-                )
+            )
 
             ngx.status = code
             ngx.say(body)
@@ -105,8 +97,6 @@ passed
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -115,13 +105,7 @@ passed
     location /t {
         content_by_lua_block {
             local t = require("lib.test_admin").test
-            local code, message = t('/apisix/admin/services/5eeb3dc90f747328b2930b0b',
-                 ngx.HTTP_DELETE,
-                 nil,
-                 [[{
-                    "action": "delete"
-                }]]
-                )
+            local code, message = t('/apisix/admin/services/5eeb3dc90f747328b2930b0b', ngx.HTTP_DELETE)
             ngx.say("[delete] code: ", code, " message: ", message)
         }
     }
@@ -129,8 +113,6 @@ passed
 GET /t
 --- response_body
 [delete] code: 200 message: passed
---- no_error_log
-[error]
 
 
 
@@ -139,13 +121,7 @@ GET /t
     location /t {
         content_by_lua_block {
             local t = require("lib.test_admin").test
-            local code = t('/apisix/admin/services/not_found',
-                 ngx.HTTP_DELETE,
-                 nil,
-                 [[{
-                    "action": "delete"
-                }]]
-                )
+            local code = t('/apisix/admin/services/not_found', ngx.HTTP_DELETE)
 
             ngx.say("[delete] code: ", code)
         }
@@ -154,8 +130,6 @@ GET /t
 GET /t
 --- response_body
 [delete] code: 404
---- no_error_log
-[error]
 
 
 
@@ -165,8 +139,8 @@ GET /t
         content_by_lua_block {
             local t = require("lib.test_admin").test
             local code, message, res = t('/apisix/admin/services',
-                 ngx.HTTP_POST,
-                 [[{
+                ngx.HTTP_POST,
+                [[{
                     "upstream": {
                         "nodes": {
                             "127.0.0.1:8080": 1
@@ -175,19 +149,16 @@ GET /t
                     }
                 }]],
                 [[{
-                    "node": {
-                        "value": {
-                            "upstream": {
-                                "nodes": {
-                                    "127.0.0.1:8080": 1
-                                },
-                                "type": "roundrobin"
-                            }
+                    "value": {
+                        "upstream": {
+                            "nodes": {
+                                "127.0.0.1:8080": 1
+                            },
+                            "type": "roundrobin"
                         }
-                    },
-                    "action": "create"
+                    }
                 }]]
-                )
+            )
 
             if code ~= 200 then
                 ngx.status = code
@@ -197,14 +168,8 @@ GET /t
 
             ngx.say("[push] code: ", code, " message: ", message)
 
-            local id = string.sub(res.node.key, #"/apisix/services/" + 1)
-            code, message = t('/apisix/admin/services/' .. id,
-                 ngx.HTTP_DELETE,
-                 nil,
-                 [[{
-                    "action": "delete"
-                }]]
-                )
+            local id = string.sub(res.key, #"/apisix/services/" + 1)
+            code, message = t('/apisix/admin/services/' .. id, ngx.HTTP_DELETE)
             ngx.say("[delete] code: ", code, " message: ", message)
         }
     }
@@ -213,8 +178,6 @@ GET /t
 --- response_body
 [push] code: 200 message: passed
 [delete] code: 200 message: passed
---- no_error_log
-[error]
 
 
 
@@ -225,8 +188,8 @@ GET /t
             local core = require("apisix.core")
             local t = require("lib.test_admin").test
             local code, message, res = t('/apisix/admin/services/5eeb3dc90f747328b2930b0b',
-                 ngx.HTTP_PUT,
-                 [[{
+                ngx.HTTP_PUT,
+                [[{
                     "upstream": {
                         "nodes": {
                             "127.0.0.1:8080": 1
@@ -235,19 +198,17 @@ GET /t
                     }
                 }]],
                 [[{
-                    "node": {
-                        "value": {
-                            "upstream": {
-                                "nodes": {
-                                    "127.0.0.1:8080": 1
-                                },
-                                "type": "roundrobin"
-                            }
+                    "value": {
+                        "upstream": {
+                            "nodes": {
+                                "127.0.0.1:8080": 1
+                            },
+                            "type": "roundrobin"
                         }
                     },
-                    "action": "set"
+                    "key": "/apisix/services/5eeb3dc90f747328b2930b0b"
                 }]]
-                )
+            )
 
             if code ~= 200 then
                 ngx.status = code
@@ -262,8 +223,6 @@ GET /t
 GET /t
 --- response_body
 [push] code: 200 message: passed
---- no_error_log
-[error]
 
 
 
@@ -274,8 +233,8 @@ GET /t
             local core = require("apisix.core")
             local t = require("lib.test_admin").test
             local code, message, res = t('/apisix/admin/services/5eeb3dc90f747328b2930b0b',
-                 ngx.HTTP_PUT,
-                 [[{
+                ngx.HTTP_PUT,
+                [[{
                     "plugins": {
                         "limit-count": {
                             "count": 2,
@@ -286,21 +245,19 @@ GET /t
                     }
                 }]],
                 [[{
-                    "node": {
-                        "value": {
-                            "plugins": {
-                                "limit-count": {
-                                    "count": 2,
-                                    "time_window": 60,
-                                    "rejected_code": 503,
-                                    "key": "remote_addr"
-                                }
+                    "value": {
+                        "plugins": {
+                            "limit-count": {
+                                "count": 2,
+                                "time_window": 60,
+                                "rejected_code": 503,
+                                "key": "remote_addr"
                             }
                         }
                     },
-                    "action": "set"
+                    "key": "/apisix/services/5eeb3dc90f747328b2930b0b"
                 }]]
-                )
+            )
 
             if code ~= 200 then
                 ngx.status = code
@@ -315,8 +272,6 @@ GET /t
 GET /t
 --- response_body
 [push] code: 200 message: passed
---- no_error_log
-[error]
 
 
 
@@ -326,8 +281,8 @@ GET /t
         content_by_lua_block {
             local t = require("lib.test_admin").test
             local code, body = t('/apisix/admin/services/*invalid_id$',
-                 ngx.HTTP_PUT,
-                 [[{
+                ngx.HTTP_PUT,
+                [[{
                     "plugins": {
                         "limit-count": {
                             "count": 2,
@@ -337,7 +292,7 @@ GET /t
                         }
                     }
                 }]]
-                )
+            )
 
             ngx.exit(code)
         }
@@ -345,8 +300,6 @@ GET /t
 --- request
 GET /t
 --- error_code: 400
---- no_error_log
-[error]
 
 
 
@@ -356,12 +309,12 @@ GET /t
         content_by_lua_block {
             local t = require("lib.test_admin").test
             local code, body = t('/apisix/admin/services/5eeb3dc90f747328b2930b0b',
-                 ngx.HTTP_PUT,
-                 [[{
+                ngx.HTTP_PUT,
+                [[{
                     "id": "3",
                     "plugins": {}
                 }]]
-                )
+            )
 
             ngx.status = code
             ngx.print(body)
@@ -372,8 +325,6 @@ GET /t
 --- error_code: 400
 --- response_body
 {"error_msg":"wrong service id"}
---- no_error_log
-[error]
 
 
 
@@ -383,21 +334,18 @@ GET /t
         content_by_lua_block {
             local t = require("lib.test_admin").test
             local code, body = t('/apisix/admin/services',
-                 ngx.HTTP_PUT,
-                 [[{
+                ngx.HTTP_PUT,
+                [[{
                     "id": "5eeb3dc90f747328b2930b0b",
                     "plugins": {}
                 }]],
                 [[{
-                    "node": {
-                        "value": {
-                            "plugins": {}
-                        },
-                        "key": "/apisix/services/5eeb3dc90f747328b2930b0b"
+                    "value": {
+                        "plugins": {}
                     },
-                    "action": "set"
+                    "key": "/apisix/services/5eeb3dc90f747328b2930b0b"
                 }]]
-                )
+            )
 
             ngx.status = code
             ngx.say(body)
@@ -407,8 +355,6 @@ GET /t
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -418,12 +364,12 @@ passed
         content_by_lua_block {
             local t = require("lib.test_admin").test
             local code, body = t('/apisix/admin/services',
-                 ngx.HTTP_PUT,
-                 [[{
+                ngx.HTTP_PUT,
+                [[{
                     "id": -100,
                     "plugins": {}
                 }]]
-                )
+            )
 
             ngx.status = code
             ngx.print(body)
@@ -433,9 +379,7 @@ passed
 GET /t
 --- error_code: 400
 --- response_body
-{"error_msg":"invalid configuration: property \"id\" validation failed: object matches none of the requireds"}
---- no_error_log
-[error]
+{"error_msg":"invalid configuration: property \"id\" validation failed: object matches none of the required"}
 
 
 
@@ -450,7 +394,7 @@ GET /t
                     "id": "*invalid_id$",
                     "plugins": {}
                 }]]
-                )
+            )
 
             ngx.status = code
             ngx.print(body)
@@ -460,9 +404,7 @@ GET /t
 GET /t
 --- error_code: 400
 --- response_body
-{"error_msg":"invalid configuration: property \"id\" validation failed: object matches none of the requireds"}
---- no_error_log
-[error]
+{"error_msg":"invalid configuration: property \"id\" validation failed: object matches none of the required"}
 
 
 
@@ -472,12 +414,12 @@ GET /t
         content_by_lua_block {
             local t = require("lib.test_admin").test
             local code, body = t('/apisix/admin/services',
-                 ngx.HTTP_PUT,
-                 [[{
+                ngx.HTTP_PUT,
+                [[{
                     "id": "5eeb3dc90f747328b2930b0b",
                     "upstream_id": "invalid$"
                 }]]
-                )
+            )
 
             ngx.status = code
             ngx.print(body)
@@ -487,9 +429,7 @@ GET /t
 GET /t
 --- error_code: 400
 --- response_body
-{"error_msg":"invalid configuration: property \"upstream_id\" validation failed: object matches none of the requireds"}
---- no_error_log
-[error]
+{"error_msg":"invalid configuration: property \"upstream_id\" validation failed: object matches none of the required"}
 
 
 
@@ -499,12 +439,12 @@ GET /t
         content_by_lua_block {
             local t = require("lib.test_admin").test
             local code, body = t('/apisix/admin/services',
-                 ngx.HTTP_PUT,
-                 [[{
+                ngx.HTTP_PUT,
+                [[{
                     "id": "5eeb3dc90f747328b2930b0b",
                     "upstream_id": "9999999999"
                 }]]
-                )
+            )
 
             ngx.status = code
             ngx.print(body)
@@ -515,8 +455,6 @@ GET /t
 --- error_code: 400
 --- response_body
 {"error_msg":"failed to fetch upstream info by upstream id [9999999999], response code: 404"}
---- no_error_log
-[error]
 
 
 
@@ -526,11 +464,11 @@ GET /t
         content_by_lua_block {
             local t = require("lib.test_admin").test
             local code, body = t('/apisix/admin/services/5eeb3dc90f747328b2930b0b',
-                 ngx.HTTP_POST,
-                 [[{
+                ngx.HTTP_POST,
+                [[{
                     "plugins": {}
                 }]]
-                )
+            )
 
             ngx.status = code
             ngx.print(body)
@@ -541,8 +479,6 @@ GET /t
 --- error_code: 400
 --- response_body
 {"error_msg":"wrong service id, do not need it"}
---- no_error_log
-[error]
 
 
 
@@ -557,7 +493,7 @@ GET /t
                     "id": "5eeb3dc90f747328b2930b0b",
                     "plugins": {}
                 }]]
-                )
+            )
 
             ngx.status = code
             ngx.print(body)
@@ -568,8 +504,6 @@ GET /t
 --- error_code: 400
 --- response_body
 {"error_msg":"wrong service id, do not need it"}
---- no_error_log
-[error]
 
 
 
@@ -590,19 +524,16 @@ GET /t
                     "desc": "new 20 service"
                 }]],
                 [[{
-                    "node": {
-                        "value": {
-                            "upstream": {
-                                "nodes": {
-                                    "127.0.0.1:8080": 1
-                                },
-                                "type": "roundrobin"
+                    "value": {
+                        "upstream": {
+                            "nodes": {
+                                "127.0.0.1:8080": 1
                             },
-                            "desc": "new 20 service"
+                            "type": "roundrobin"
                         },
-                        "key": "/apisix/services/5eeb3dc90f747328b2930b0b"
+                        "desc": "new 20 service"
                     },
-                    "action": "compareAndSwap"
+                    "key": "/apisix/services/5eeb3dc90f747328b2930b0b"
                 }]]
             )
 
@@ -614,8 +545,6 @@ GET /t
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -630,19 +559,16 @@ passed
                     "desc": "new 19 service"
                 }]],
                 [[{
-                    "node": {
-                        "value": {
-                            "upstream": {
-                                "nodes": {
-                                    "127.0.0.1:8080": 1
-                                },
-                                "type": "roundrobin"
+                    "value": {
+                        "upstream": {
+                            "nodes": {
+                                "127.0.0.1:8080": 1
                             },
-                            "desc": "new 19 service"
+                            "type": "roundrobin"
                         },
-                        "key": "/apisix/services/5eeb3dc90f747328b2930b0b"
+                        "desc": "new 19 service"
                     },
-                    "action": "compareAndSwap"
+                    "key": "/apisix/services/5eeb3dc90f747328b2930b0b"
                 }]]
             )
 
@@ -654,8 +580,6 @@ passed
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -676,16 +600,14 @@ passed
                     }
                 }]],
                 [[{
-                    "node": {
-                        "value": {
-                            "upstream": {
-                                "nodes": {
-                                    "127.0.0.1:8080": 1,
-                                    "127.0.0.1:8081": 3,
-                                    "127.0.0.1:8082": 4
-                                },
-                                "type": "roundrobin"
-                            }
+                    "value": {
+                        "upstream": {
+                            "nodes": {
+                                "127.0.0.1:8080": 1,
+                                "127.0.0.1:8081": 3,
+                                "127.0.0.1:8082": 4
+                            },
+                            "type": "roundrobin"
                         }
                     }
                 }]]
@@ -699,8 +621,6 @@ passed
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -710,8 +630,8 @@ passed
         content_by_lua_block {
             local t = require("lib.test_admin").test
             local code, body = t('/apisix/admin/services/5eeb3dc90f747328b2930b0b',
-                 ngx.HTTP_PUT,
-                 [[{
+                ngx.HTTP_PUT,
+                [[{
                     "upstream": {
                         "nodes": {
                             "127.0.0.1:8080": 1
@@ -719,7 +639,8 @@ passed
                         "type": "chash"
                     },
                     "desc": "new service"
-                }]])
+                }]]
+            )
 
             ngx.status = code
             ngx.print(body)
@@ -730,8 +651,6 @@ GET /t
 --- error_code: 400
 --- response_body
 {"error_msg":"missing key"}
---- no_error_log
-[error]
 
 
 
@@ -741,8 +660,8 @@ GET /t
         content_by_lua_block {
             local t = require("lib.test_admin").test
             local code, body = t('/apisix/admin/services/5eeb3dc90f747328b2930b0b',
-                 ngx.HTTP_PUT,
-                 [[{
+                ngx.HTTP_PUT,
+                [[{
                     "upstream": {
                         "nodes": {
                             "127.0.0.1:8080": 1
@@ -751,7 +670,8 @@ GET /t
                         "hash_on": "header"
                     },
                     "desc": "new service"
-                }]])
+                }]]
+            )
 
             ngx.status = code
             ngx.print(body)
@@ -762,8 +682,6 @@ GET /t
 --- error_code: 400
 --- response_body
 {"error_msg":"missing key"}
---- no_error_log
-[error]
 
 
 
@@ -773,8 +691,8 @@ GET /t
         content_by_lua_block {
             local t = require("lib.test_admin").test
             local code, body = t('/apisix/admin/services/5eeb3dc90f747328b2930b0b',
-                 ngx.HTTP_PUT,
-                 [[{
+                ngx.HTTP_PUT,
+                [[{
                     "upstream": {
                         "nodes": {
                             "127.0.0.1:8080": 1
@@ -783,7 +701,8 @@ GET /t
                         "hash_on": "cookie"
                     },
                     "desc": "new service"
-                }]])
+                }]]
+            )
 
             ngx.status = code
             ngx.print(body)
@@ -794,8 +713,6 @@ GET /t
 --- error_code: 400
 --- response_body
 {"error_msg":"missing key"}
---- no_error_log
-[error]
 
 
 
@@ -805,8 +722,8 @@ GET /t
         content_by_lua_block {
             local t = require("lib.test_admin").test
             local code, body = t('/apisix/admin/services/5eeb3dc90f747328b2930b0b',
-                 ngx.HTTP_PUT,
-                 [[{
+                ngx.HTTP_PUT,
+                [[{
                     "upstream": {
                         "nodes": {
                             "127.0.0.1:8080": 1
@@ -815,7 +732,8 @@ GET /t
                         "hash_on": "consumer"
                     },
                     "desc": "new service"
-                }]])
+                }]]
+            )
 
             ngx.status = code
             ngx.say(code .. " " .. body)
@@ -825,5 +743,3 @@ GET /t
 GET /t
 --- response_body
 200 passed
---- no_error_log
-[error]

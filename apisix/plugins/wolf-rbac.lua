@@ -21,24 +21,17 @@ local json     = require("apisix.core.json")
 local sleep    = core.sleep
 local ngx_re = require("ngx.re")
 local http     = require("resty.http")
-local ipairs   = ipairs
 local ngx      = ngx
-local tostring = tostring
 local rawget   = rawget
 local rawset   = rawset
 local setmetatable = setmetatable
 local type     = type
 local string   = string
 local req_read_body = ngx.req.read_body
-local req_get_post_args = ngx.req.get_post_args
 local req_get_body_data = ngx.req.get_body_data
 
 local plugin_name = "wolf-rbac"
 
-
-local lrucache = core.lrucache.new({
-    type = "plugin",
-})
 
 local schema = {
     type = "object",
@@ -66,23 +59,6 @@ local _M = {
     schema = schema,
 }
 
-
-local create_consume_cache
-do
-    local consumer_names = {}
-
-    function create_consume_cache(consumers)
-        core.table.clear(consumer_names)
-
-        for _, consumer in ipairs(consumers.nodes) do
-            core.log.info("consumer node: ", core.json.delay_encode(consumer))
-            consumer_names[consumer.auth_conf.appid] = consumer
-        end
-
-        return consumer_names
-    end
-
-end -- do
 
 local token_version = 'V1'
 local function create_rbac_token(appid, wolf_token)
@@ -133,17 +109,23 @@ end
 
 -- timeout in ms
 local function http_req(method, uri, body, myheaders, timeout)
-    if myheaders == nil then myheaders = new_headers() end
+    if not myheaders then
+        myheaders = new_headers()
+    end
 
     local httpc = http.new()
     if timeout then
         httpc:set_timeout(timeout)
     end
 
-    local params = {method = method, headers = myheaders, body = body,
-                    ssl_verify = false}
-    local res, err = httpc:request_uri(uri, params)
-    if err then
+    local res, err = httpc:request_uri(uri, {
+        method = method,
+        headers = myheaders,
+        body = body,
+        ssl_verify = false
+    })
+
+    if not res then
         core.log.error("FAIL REQUEST [ ",core.json.delay_encode(
             {method = method, uri = uri, body = body, headers = myheaders}),
             " ] failed! res is nil, err:", err)
@@ -228,7 +210,7 @@ local function check_url_permission(server, appid, action, resName, client_ip, w
         }
     end
 
-    if res.status ~= 200 and res.status ~= 401 then
+    if res.status ~= 200 and res.status >= 500 then
         return {
             status = 500,
             err = 'request to wolf-server failed, status:' .. res.status
@@ -236,7 +218,7 @@ local function check_url_permission(server, appid, action, resName, client_ip, w
     end
 
     local body, err = json.decode(res.body)
-    if err then
+    if not body then
         errmsg = 'check permission failed! parse response json failed!'
         core.log.error( "json.decode(", res.body, ") failed! err:", err)
         return {status = res.status, err = errmsg}
@@ -281,17 +263,16 @@ function _M.rewrite(conf, ctx)
         return 401, fail_response("Missing related consumer")
     end
 
-    local consumers = lrucache("consumers_key", consumer_conf.conf_version,
-        create_consume_cache, consumer_conf)
+    local consumers = consumer.consumers_kv(plugin_name, consumer_conf, "appid")
 
     core.log.info("------ consumers: ", core.json.delay_encode(consumers))
-    local consumer = consumers[appid]
-    if not consumer then
+    local cur_consumer = consumers[appid]
+    if not cur_consumer then
         core.log.error("consumer [", appid, "] not found")
         return 401, fail_response("Invalid appid in rbac token")
     end
-    core.log.info("consumer: ", core.json.delay_encode(consumer))
-    local server = consumer.auth_conf.server
+    core.log.info("consumer: ", core.json.delay_encode(cur_consumer))
+    local server = cur_consumer.auth_conf.server
 
     local res = check_url_permission(server, appid, action, url,
                     client_ip, wolf_token)
@@ -306,11 +287,11 @@ function _M.rewrite(conf, ctx)
         local userId = userInfo.id
         username = userInfo.username
         nickname = userInfo.nickname or userInfo.username
-        local prefix = consumer.auth_conf.header_prefix or ''
+        local prefix = cur_consumer.auth_conf.header_prefix or ''
         core.response.set_header(prefix .. "UserId", userId)
         core.response.set_header(prefix .. "Username", username)
         core.response.set_header(prefix .. "Nickname", ngx.escape_uri(nickname))
-        core.request.set_header(ctx, prefix .. "UserId", userId, ctx)
+        core.request.set_header(ctx, prefix .. "UserId", userId)
         core.request.set_header(ctx, prefix .. "Username", username)
         core.request.set_header(ctx, prefix .. "Nickname", ngx.escape_uri(nickname))
     end
@@ -320,10 +301,9 @@ function _M.rewrite(conf, ctx)
         core.log.error(" check_url_permission(",
             core.json.delay_encode(perm_item),
             ") failed, res: ",core.json.delay_encode(res))
-        return 401, fail_response(res.err,
-            { username = username, nickname = nickname }
-        )
+        return res.status, fail_response(res.err, { username = username, nickname = nickname })
     end
+    consumer.attach_consumer(ctx, cur_consumer, consumer_conf)
     core.log.info("wolf-rbac check permission passed")
 end
 
@@ -335,11 +315,11 @@ local function get_args()
                    1, true) then
         local req_body = req_get_body_data()
         args, err = json.decode(req_body)
-        if err then
+        if not args then
             core.log.error("json.decode(", req_body, ") failed! ", err)
         end
     else
-        args = req_get_post_args()
+        args = core.request.get_post_args(ctx)
     end
 
     return args
@@ -351,15 +331,14 @@ local function get_consumer(appid)
         core.response.exit(500)
     end
 
-    local consumers = lrucache("consumers_key", consumer_conf.conf_version,
-        create_consume_cache, consumer_conf)
+    local consumers = consumer.consumers_kv(plugin_name, consumer_conf, "appid")
 
     core.log.info("------ consumers: ", core.json.delay_encode(consumers))
     local consumer = consumers[appid]
     if not consumer then
         core.log.info("request appid [", appid, "] not found")
         core.response.exit(400,
-                fail_response("appid [" .. tostring(appid) .. "] not found")
+                fail_response("appid not found")
             )
     end
     return consumer
@@ -377,10 +356,10 @@ local function request_to_wolf_server(method, uri, headers, body)
 
     core.log.info("request [", request_debug, "] ....")
     local res, err = http_req(method, uri, core.json.encode(body), headers, timeout)
-    if err or not res then
+    if not res then
         core.log.error("request [", request_debug, "] failed! err: ", err)
         return core.response.exit(500,
-            fail_response("request to wolf-server failed! " .. tostring(err))
+            fail_response("request to wolf-server failed!")
         )
     end
     core.log.info("request [", request_debug, "] status: ", res.status,
@@ -390,19 +369,18 @@ local function request_to_wolf_server(method, uri, headers, body)
         core.log.error("request [", request_debug, "] failed! status: ",
                         res.status)
         return core.response.exit(500,
-        fail_response("request to wolf-server failed! status:"
-                          .. tostring(res.status))
+        fail_response("request to wolf-server failed!")
         )
     end
     local body, err = json.decode(res.body)
-    if err or not body then
+    if not body then
         core.log.error("request [", request_debug, "] failed! err:", err)
         return core.response.exit(500, fail_response("request to wolf-server failed!"))
     end
     if not body.ok then
         core.log.error("request [", request_debug, "] failed! response body:",
                        core.json.delay_encode(body))
-        return core.response.exit(200, fail_response(body.reason))
+        return core.response.exit(200, fail_response("request to wolf-server failed!"))
     end
 
     core.log.info("request [", request_debug, "] success! response body:",

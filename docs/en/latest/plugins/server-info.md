@@ -1,5 +1,12 @@
 ---
 title: server-info
+keywords:
+  - Apache APISIX
+  - API Gateway
+  - Plugin
+  - Server info
+  - server-info
+description: This document contains information about the Apache APISIX server-info Plugin.
 ---
 
 <!--
@@ -21,82 +28,67 @@ title: server-info
 #
 -->
 
-## Summary
+## Description
 
-- [**Name**](#name)
-- [**Attributes**](#attributes)
-- [**API**](#api)
-- [**How To Enable**](#how-to-enable)
-- [**Test Plugin**](#test-plugin)
-- [**Disable Plugin**](#disable-plugin)
+The `server-info` Plugin periodically reports basic server information to etcd.
 
-## Name
+The information reported by the Plugin is explained below:
 
-`server-info` is a plugin that reports basic server information to etcd periodically.
-
-The meaning of each item in server information is following:
-
-| Name    | Type | Description |
-|---------|------|-------------|
-| up_time | integer | Elapsed time (in seconds) since APISIX instance was launched, value will be reset when you hot updating APISIX but is kept for intact if you just reloading APISIX. |
-| boot_time | integer | Bootstrap time (UNIX timestamp) of the APISIX instance, value will be reset when you hot updating APISIX but is kept for intact if you just reloading APISIX. |
-| last_report_time | integer | Last reporting time (UNIX timestamp). |
-| id | string | APISIX instance id. |
-| etcd_version | string | The etcd cluster version that APISIX is using, value will be `"unknown"` if the network (to etcd) is partitioned. |
-| version | string | APISIX version. |
-| hostname | string | Hostname of the machine/pod that APISIX is deployed. |
+| Name         | Type    | Description                                                                                                            |
+|--------------|---------|------------------------------------------------------------------------------------------------------------------------|
+| boot_time    | integer | Bootstrap time (UNIX timestamp) of the APISIX instance. Resets when hot updating but not when APISIX is just reloaded. |
+| id           | string  | APISIX instance ID.                                                                                                    |
+| etcd_version | string  | Version of the etcd cluster used by APISIX. Will be `unknown` if the network to etcd is partitioned.                   |
+| version      | string  | Version of APISIX instance.                                                                                            |
+| hostname     | string  | Hostname of the machine/pod APISIX is deployed to.                                                                     |
 
 ## Attributes
 
-None
+None.
 
 ## API
 
-This plugin exposes one API `/v1/server_info` to [Control API](../control-api.md).
+This Plugin exposes the endpoint `/v1/server_info` to the [Control API](../control-api.md)
 
-## How to Enable
+## Enabling the Plugin
 
-Just configure `server-info` in the plugin list of the configuration file `conf/config.yaml`.
+Add `server-info` to the Plugin list in your configuration file (`conf/config.yaml`):
 
-```
-plugins:                          # plugin list
-  - example-plugin
-  - limit-req
-  - node-status
+```yaml title="conf/config.yaml"
+plugins:
+  - ...
   - server-info
-  - jwt-auth
-  - zipkin
-  ......
 ```
 
-## How to customize the server info report configurations
+## Customizing server info report configuration
 
 We can change the report configurations in the `plugin_attr` section of `conf/config.yaml`.
 
+The following configurations of the server info report can be customized:
+
 | Name         | Type   | Default  | Description                                                          |
 | ------------ | ------ | -------- | -------------------------------------------------------------------- |
-| report_interval | integer | 60 | the interval to report server info to etcd (unit: second, maximum: 3600, minimum: 60). |
-| report_ttl | integer | 7200 | the live time for server info in etcd (unit: second, maximum: 86400, minimum: 3600). |
+| report_ttl | integer | 36 | Time in seconds after which the report is deleted from etcd (maximum: 86400, minimum: 3). |
 
-Here is an example, which modifies the `report_interval` to 10 minutes and sets the `report_ttl` to one hour.
+To customize, you can modify the `plugin_attr` attribute in your configuration file (`conf/config.yaml`):
 
-```yaml
+```yaml title="conf/config.yaml"
 plugin_attr:
   server-info:
-    report_interval: 600,
-    report_ttl: 3600
+    report_ttl: 60
 ```
 
-## Test Plugin
+## Example usage
 
-After enabling this plugin, you can access these data through the plugin Control API:
+After you enable the Plugin as mentioned above, you can access the server info report through the Control API:
 
 ```shell
-$ curl http://127.0.0.1:9090/v1/server_info -s | jq .
+curl http://127.0.0.1:9090/v1/server_info -s | jq .
+```
+
+```json
 {
   "etcd_version": "3.5.0",
-  "up_time": 9460,
-  "last_report_time": 1608531519,
   "id": "b7ce1c5c-b1aa-4df7-888a-cbe403f3e948",
   "hostname": "fedora32",
   "version": "2.1",
@@ -104,18 +96,17 @@ $ curl http://127.0.0.1:9090/v1/server_info -s | jq .
 }
 ```
 
-The APISIX Dashboard will collects server info in etcd, so you may also try to check them through Dashboard.
+:::tip
+
+You can also view the server info report through the [APISIX Dashboard](/docs/dashboard/USER_GUIDE).
+
+:::
 
 ## Disable Plugin
 
-Remove `server-info` in the plugin list of configure file `conf/config.yaml`.
+To disable the Plugin, you can remove `server-info` from the list of Plugins in your configuration file:
 
-```
-plugins:                          # plugin list
-  - example-plugin
-  - limit-req
-  - node-status
-  - jwt-auth
-  - zipkin
-  ......
+```yaml title="conf/config.yaml"
+plugins:
+  - ...
 ```

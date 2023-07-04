@@ -57,20 +57,17 @@ __DATA__
                     }
                 }]],
                 [[{
-                    "node": {
-                        "value": {
-                            "plugins": {
-                                "limit-count": {
-                                    "count": 2,
-                                    "time_window": 60,
-                                    "rejected_code": 503,
-                                    "key": "remote_addr"
-                                }
+                    "value": {
+                        "plugins": {
+                            "limit-count": {
+                                "count": 2,
+                                "time_window": 60,
+                                "rejected_code": 503,
+                                "key": "remote_addr"
                             }
-                        },
-                        "key": "/apisix/plugin_configs/1"
+                        }
                     },
-                    "action": "set"
+                    "key": "/apisix/plugin_configs/1"
                 }]]
                 )
 
@@ -98,20 +95,17 @@ passed
                 ngx.HTTP_GET,
                 nil,
                 [[{
-                    "node": {
-                        "value": {
-                            "plugins": {
-                                "limit-count": {
-                                    "count": 2,
-                                    "time_window": 60,
-                                    "rejected_code": 503,
-                                    "key": "remote_addr"
-                                }
+                    "value": {
+                        "plugins": {
+                            "limit-count": {
+                                "count": 2,
+                                "time_window": 60,
+                                "rejected_code": 503,
+                                "key": "remote_addr"
                             }
-                        },
-                        "key": "/apisix/plugin_configs/1"
+                        }
                     },
-                    "action": "get"
+                    "key": "/apisix/plugin_configs/1"
                 }]]
                 )
 
@@ -133,27 +127,23 @@ passed
                 ngx.HTTP_GET,
                 nil,
                 [[{
-                    "node": {
-                        "dir": true,
-                        "nodes": [
+                    "total": 1,
+                    "list": [
                         {
                             "key": "/apisix/plugin_configs/1",
                             "value": {
-                            "plugins": {
-                                "limit-count": {
-                                "time_window": 60,
-                                "policy": "local",
-                                "count": 2,
-                                "key": "remote_addr",
-                                "rejected_code": 503
+                                "plugins": {
+                                    "limit-count": {
+                                    "time_window": 60,
+                                    "policy": "local",
+                                    "count": 2,
+                                    "key": "remote_addr",
+                                    "rejected_code": 503
+                                    }
                                 }
                             }
-                            }
                         }
-                        ],
-                        "key": "/apisix/plugin_configs"
-                    },
-                    "action": "get"
+                    ]
                 }]]
                 )
 
@@ -191,20 +181,17 @@ passed
                     }
                 }}]],
                 [[{
-                    "node": {
-                        "value": {
-                            "plugins": {
-                                "limit-count": {
-                                    "count": 3,
-                                    "time_window": 60,
-                                    "rejected_code": 503,
-                                    "key": "remote_addr"
-                                }
+                    "value": {
+                        "plugins": {
+                            "limit-count": {
+                                "count": 3,
+                                "time_window": 60,
+                                "rejected_code": 503,
+                                "key": "remote_addr"
                             }
-                        },
-                        "key": "/apisix/plugin_configs/1"
+                        }
                     },
-                    "action": "compareAndSwap"
+                    "key": "/apisix/plugin_configs/1"
                 }]]
                 )
 
@@ -248,20 +235,17 @@ passed
                     }
                 }]],
                 [[{
-                    "node": {
-                        "value": {
-                            "plugins": {
-                                "limit-count": {
-                                    "count": 2,
-                                    "time_window": 60,
-                                    "rejected_code": 503,
-                                    "key": "remote_addr"
-                                }
+                    "value": {
+                        "plugins": {
+                            "limit-count": {
+                                "count": 2,
+                                "time_window": 60,
+                                "rejected_code": 503,
+                                "key": "remote_addr"
                             }
-                        },
-                        "key": "/apisix/plugin_configs/1"
+                        }
                     },
-                    "action": "compareAndSwap"
+                    "key": "/apisix/plugin_configs/1"
                 }]]
                 )
 
@@ -286,7 +270,6 @@ passed
     location /t {
         content_by_lua_block {
             local t = require("lib.test_admin").test
-            local etcd = require("apisix.core.etcd")
             local code, body = t('/apisix/admin/plugin_configs/1',
                 ngx.HTTP_PUT,
                 [[{
@@ -333,24 +316,21 @@ passed
                     "desc": "blah"
                 }]],
                 [[{
-                    "node": {
-                        "value": {
-                            "plugins": {
-                                "limit-count": {
-                                    "count": 2,
-                                    "time_window": 60,
-                                    "rejected_code": 503,
-                                    "key": "remote_addr"
-                                }
-                            },
-                            "labels": {
-                                "你好": "世界"
-                            },
-                            "desc": "blah"
+                    "value": {
+                        "plugins": {
+                            "limit-count": {
+                                "count": 2,
+                                "time_window": 60,
+                                "rejected_code": 503,
+                                "key": "remote_addr"
+                            }
                         },
-                        "key": "/apisix/plugin_configs/1"
+                        "labels": {
+                            "你好": "世界"
+                        },
+                        "desc": "blah"
                     },
-                    "action": "set"
+                    "key": "/apisix/plugin_configs/1"
                 }]]
                 )
 
@@ -378,24 +358,21 @@ passed
                 ngx.HTTP_GET,
                 nil,
                 [[{
-                    "node": {
-                        "value": {
-                            "plugins": {
-                                "limit-count": {
-                                    "count": 2,
-                                    "time_window": 60,
-                                    "rejected_code": 503,
-                                    "key": "remote_addr"
-                                }
-                            },
-                            "labels": {
-                                "你好": "世界"
-                            },
-                            "desc": "blah"
+                    "value": {
+                        "plugins": {
+                            "limit-count": {
+                                "count": 2,
+                                "time_window": 60,
+                                "rejected_code": 503,
+                                "key": "remote_addr"
+                            }
                         },
-                        "key": "/apisix/plugin_configs/1"
+                        "labels": {
+                            "你好": "世界"
+                        },
+                        "desc": "blah"
                     },
-                    "action": "get"
+                    "key": "/apisix/plugin_configs/1"
                 }]]
                 )
 
@@ -413,7 +390,6 @@ passed
     location /t {
         content_by_lua_block {
             local t = require("lib.test_admin").test
-            local etcd = require("apisix.core.etcd")
             local code, body = t('/apisix/admin/plugin_configs/1',
                 ngx.HTTP_PUT,
                 [[{
@@ -430,3 +406,118 @@ passed
 --- response_body
 {"error_msg":"invalid configuration: property \"labels\" validation failed: wrong type: expected object, got string"}
 --- error_code: 400
+
+
+
+=== TEST 10: set plugin-configs(id: 1)
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin").test
+            local etcd = require("apisix.core.etcd")
+            local code, body = t('/apisix/admin/plugin_configs/1',
+                ngx.HTTP_PUT,
+                [[{
+                    "plugins": {
+                        "limit-count": {
+                            "count": 2,
+                            "time_window": 60,
+                            "rejected_code": 503,
+                            "key": "remote_addr"
+                        }
+                    }
+                }]]
+                )
+
+            ngx.status = code
+            ngx.say(body)
+
+            local res = assert(etcd.get('/plugin_configs/1'))
+            local create_time = res.body.node.value.create_time
+            assert(create_time ~= nil, "create_time is nil")
+            local update_time = res.body.node.value.update_time
+            assert(update_time ~= nil, "update_time is nil")
+        }
+    }
+--- response_body
+passed
+
+
+
+=== TEST 11: set route(id: 1)
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin").test
+            local code, body = t('/apisix/admin/routes/1',
+                 ngx.HTTP_PUT,
+                 [[{
+                    "plugin_config_id": 1,
+                    "uri": "/index.html",
+                    "upstream": {
+                        "nodes": {
+                            "127.0.0.1:8080": 1
+                        },
+                        "type": "roundrobin"
+                    }
+                }]]
+                )
+            if code >= 300 then
+                ngx.status = code
+            end
+            ngx.say(body)
+        }
+    }
+--- response_body
+passed
+
+
+
+=== TEST 12: delete-plugin configs failed(id: 1)
+--- config
+    location /t {
+        content_by_lua_block {
+            ngx.sleep(0.3)
+            local t = require("lib.test_admin").test
+            local code, body = t('/apisix/admin/plugin_configs/1',
+                 ngx.HTTP_DELETE
+            )
+            ngx.print(body)
+        }
+    }
+--- response_body
+{"error_msg":"can not delete this plugin config, route [1] is still using it now"}
+
+
+
+=== TEST 13: delete route(id: 1)
+--- config
+    location /t {
+        content_by_lua_block {
+            ngx.sleep(0.3)
+            local t = require("lib.test_admin").test
+            local code, body = t('/apisix/admin/routes/1',
+                 ngx.HTTP_DELETE
+            )
+            ngx.say(body)
+        }
+    }
+--- response_body
+passed
+
+
+
+=== TEST 14: delete plugin-configs(id: 1)
+--- config
+    location /t {
+        content_by_lua_block {
+            ngx.sleep(0.3)
+            local t = require("lib.test_admin").test
+            local code, body = t('/apisix/admin/plugin_configs/1',
+                 ngx.HTTP_DELETE
+            )
+            ngx.say(body)
+        }
+    }
+--- response_body
+passed

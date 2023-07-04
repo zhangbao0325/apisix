@@ -56,6 +56,9 @@ end
 
 
 function _M.report(self, span)
+    if span:get_baggage_item("x-b3-sampled") == "0" then
+        return
+    end
     local span_context = span:context()
 
     local zipkin_tags = {}
@@ -170,7 +173,7 @@ function _M.init_processor(self)
     end
 
     local processor, err = batch_processor:new(flush, process_conf)
-    if err then
+    if not processor then
         return false, "create processor error: " .. err
     end
 

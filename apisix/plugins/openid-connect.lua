@@ -14,11 +14,14 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 --
-local string = string
-local core = require("apisix.core")
-local ngx_re = require("ngx.re")
+
+local core    = require("apisix.core")
+local ngx_re  = require("ngx.re")
 local openidc = require("resty.openidc")
-local ngx = ngx
+local random  = require("resty.random")
+local string  = string
+local ngx     = ngx
+
 local ngx_encode_base64 = ngx.encode_base64
 
 local plugin_name = "openid-connect"
@@ -55,6 +58,18 @@ local schema = {
             type = "boolean",
             default = false,
         },
+        session = {
+            type = "object",
+            properties = {
+                secret = {
+                    type = "string",
+                    description = "the key used for the encrypt and HMAC calculation",
+                    minLength = 16,
+                },
+            },
+            required = {"secret"},
+            additionalProperties = false,
+        },
         realm = {
             type = "string",
             default = "apisix",
@@ -67,8 +82,25 @@ local schema = {
             type = "string",
             description = "use ngx.var.request_uri if not configured"
         },
+        post_logout_redirect_uri = {
+            type = "string",
+            description = "the URI will be redirect when request logout_path",
+        },
+        unauth_action = {
+            type = "string",
+            default = "auth",
+            enum = {"auth", "deny", "pass"},
+            description = "The action performed when client is not authorized. Use auth to " ..
+                "redirect user to identity provider, deny to respond with 401 Unauthorized, and " ..
+                "pass to allow the request regardless."
+        },
         public_key = {type = "string"},
         token_signing_alg_values_expected = {type = "string"},
+        use_pkce = {
+            description = "when set to true the PKEC(Proof Key for Code Exchange) will be used.",
+            type = "boolean",
+            default = false
+        },
         set_access_token_header = {
             description = "Whether the access token should be added as a header to the request " ..
                 "for downstream",
@@ -92,14 +124,21 @@ local schema = {
                 "header to the request for downstream.",
             type = "boolean",
             default = true
+        },
+        set_refresh_token_header = {
+            description = "Whether the refresh token should be added in the X-Refresh-Token " ..
+                "header to the request for downstream.",
+            type = "boolean",
+            default = false
         }
     },
+    encrypt_fields = {"client_secret"},
     required = {"client_id", "client_secret", "discovery"}
 }
 
 
 local _M = {
-    version = 0.1,
+    version = 0.2,
     priority = 2599,
     name = plugin_name,
     schema = schema,
@@ -110,6 +149,15 @@ function _M.check_schema(conf)
     if conf.ssl_verify == "no" then
         -- we used to set 'ssl_verify' to "no"
         conf.ssl_verify = false
+    end
+
+    if not conf.bearer_only and not conf.session then
+        core.log.warn("when bearer_only = false, " ..
+                       "you'd better complete the session configuration manually")
+        conf.session = {
+            -- generate a secret when bearer_only = false and no secret is configured
+            secret = ngx_encode_base64(random.bytes(32, true) or random.bytes(32))
+        }
     end
 
     local ok, err = core.schema.check(schema, conf)
@@ -179,8 +227,8 @@ local function introspect(ctx, conf)
 
     -- If we get here, token was found in request.
 
-    if conf.public_key then
-        -- Validate token against public key.
+    if conf.public_key or conf.use_jwks then
+        -- Validate token against public key or jwks document of the oidc provider.
         -- TODO: In the called method, the openidc module will try to extract
         --  the token by itself again -- from a request header or session cookie.
         --  It is inefficient that we also need to extract it (just from headers)
@@ -196,7 +244,9 @@ local function introspect(ctx, conf)
         end
 
         -- Token successfully validated.
-        return res, err, token, nil
+        local method = (conf.public_key and "public_key") or (conf.use_jwks and "jwks")
+        core.log.debug("token validate successfully by ", method)
+        return res, err, token, res
     else
         -- Validate token against introspection endpoint.
         -- TODO: Same as above for public key validation.
@@ -210,6 +260,7 @@ local function introspect(ctx, conf)
 
         -- Token successfully validated and response from the introspection
         -- endpoint contains the userinfo.
+        core.log.debug("token validate successfully by introspection")
         return res, err, token, res
     end
 end
@@ -253,7 +304,7 @@ function _M.rewrite(plugin_conf, ctx)
         conf.ssl_verify = "no"
     end
 
-    local response, err
+    local response, err, session, _
 
     if conf.bearer_only or conf.introspection_endpoint or conf.public_key then
         -- An introspection endpoint or a public key has been configured. Try to
@@ -285,22 +336,34 @@ function _M.rewrite(plugin_conf, ctx)
         -- Either token validation via introspection endpoint or public key is
         -- not configured, and/or token could not be extracted from the request.
 
+        local unauth_action = conf.unauth_action
+        if unauth_action ~= "auth" then
+            unauth_action = "deny"
+        end
+
         -- Authenticate the request. This will validate the access token if it
         -- is stored in a session cookie, and also renew the token if required.
         -- If no token can be extracted, the response will redirect to the ID
         -- provider's authorization endpoint to initiate the Relying Party flow.
         -- This code path also handles when the ID provider then redirects to
         -- the configured redirect URI after successful authentication.
-        response, err = openidc.authenticate(conf)
+        response, err, _, session  = openidc.authenticate(conf, nil, unauth_action, conf.session)
 
         if err then
+            if err == "unauthorized request" then
+                if conf.unauth_action == "pass" then
+                    return nil
+                end
+                return 401
+            end
             core.log.error("OIDC authentication failed: ", err)
             return 500
         end
 
         if response then
             -- If the openidc module has returned a response, it may contain,
-            -- respectively, the access token, the ID token, and the userinfo.
+            -- respectively, the access token, the ID token, the refresh token,
+            -- and the userinfo.
             -- Add respective headers to the request, if so configured.
 
             -- Add configured access token header, maybe.
@@ -316,6 +379,11 @@ function _M.rewrite(plugin_conf, ctx)
             if response.user and conf.set_userinfo_header then
                 core.request.set_header(ctx, "X-Userinfo",
                     ngx_encode_base64(core.json.encode(response.user)))
+            end
+
+            -- Add X-Refresh-Token header, maybe.
+            if session.data.refresh_token and conf.set_refresh_token_header then
+                core.request.set_header(ctx, "X-Refresh-Token", session.data.refresh_token)
             end
         end
     end

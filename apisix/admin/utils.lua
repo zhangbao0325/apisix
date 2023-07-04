@@ -17,6 +17,8 @@
 local core    = require("apisix.core")
 local ngx_time = ngx.time
 local tonumber = tonumber
+local ipairs = ipairs
+local pairs = pairs
 
 
 local _M = {}
@@ -24,8 +26,8 @@ local _M = {}
 
 local function inject_timestamp(conf, prev_conf, patch_conf)
     if not conf.create_time then
-        if prev_conf and prev_conf.node.value.create_time then
-            conf.create_time = prev_conf.node.value.create_time
+        if prev_conf and (prev_conf.node or prev_conf.list).value.create_time then
+            conf.create_time = (prev_conf.node or prev_conf.list).value.create_time
         else
             -- As we don't know existent data's create_time, we have to pretend
             -- they are created now.
@@ -77,5 +79,35 @@ function _M.fix_count(body, id)
     end
 end
 
+
+function _M.decrypt_params(decrypt_func, body, schema_type)
+    -- list
+    if body.list then
+        for _, route in ipairs(body.list) do
+            if route.value and route.value.plugins then
+                for name, conf in pairs(route.value.plugins) do
+                    decrypt_func(name, conf, schema_type)
+                end
+            end
+        end
+        return
+    end
+
+    -- node
+    local plugins = body.node and body.node.value
+                    and body.node.value.plugins
+
+    if plugins then
+        for name, conf in pairs(plugins) do
+            decrypt_func(name, conf, schema_type)
+        end
+    end
+
+    -- metadata
+    if schema_type == core.schema.TYPE_METADATA then
+        local conf = body.node and body.node.value
+        decrypt_func(conf.name, conf, schema_type)
+    end
+end
 
 return _M

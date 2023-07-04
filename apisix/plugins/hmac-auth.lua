@@ -19,7 +19,6 @@ local type       = type
 local abs        = math.abs
 local ngx_time   = ngx.time
 local ngx_re     = require("ngx.re")
-local ngx_req    = ngx.req
 local pairs      = pairs
 local ipairs     = ipairs
 local hmac_sha1  = ngx.hmac_sha1
@@ -40,9 +39,6 @@ local SIGNED_HEADERS_KEY = "X-HMAC-SIGNED-HEADERS"
 local plugin_name   = "hmac-auth"
 local MAX_REQ_BODY = 1024 * 512
 
-local lrucache = core.lrucache.new({
-    type = "plugin",
-})
 
 local schema = {
     type = "object",
@@ -94,6 +90,7 @@ local consumer_schema = {
             default = MAX_REQ_BODY,
         },
     },
+    encrypt_fields = {"secret_key"},
     required = {"access_key", "secret_key"},
 }
 
@@ -140,24 +137,6 @@ local function remove_headers(ctx, ...)
 end
 
 
-local create_consumer_cache
-do
-    local consumer_names = {}
-
-    function create_consumer_cache(consumers)
-        core.table.clear(consumer_names)
-
-        for _, consumer in ipairs(consumers.nodes) do
-            core.log.info("consumer node: ", core.json.delay_encode(consumer))
-            consumer_names[consumer.auth_conf.access_key] = consumer
-        end
-
-        return consumer_names
-    end
-
-end -- do
-
-
 function _M.check_schema(conf, schema_type)
     core.log.info("input conf: ", core.json.delay_encode(conf))
 
@@ -171,20 +150,18 @@ end
 
 local function get_consumer(access_key)
     if not access_key then
-        return nil, {message = "missing access key"}
+        return nil, "missing access key"
     end
 
     local consumer_conf = consumer.plugin(plugin_name)
     if not consumer_conf then
-        return nil, {message = "Missing related consumer"}
+        return nil, "Missing related consumer"
     end
 
-    local consumers = lrucache("consumers_key", consumer_conf.conf_version,
-        create_consumer_cache, consumer_conf)
-
+    local consumers = consumer.consumers_kv(plugin_name, consumer_conf, "access_key")
     local consumer = consumers[access_key]
     if not consumer then
-        return nil, {message = "Invalid access key"}
+        return nil, "Invalid access key"
     end
     core.log.info("consumer: ", core.json.delay_encode(consumer))
 
@@ -209,8 +186,8 @@ end
 local function generate_signature(ctx, secret_key, params)
     local canonical_uri = ctx.var.uri
     local canonical_query_string = ""
-    local request_method = ngx_req.get_method()
-    local args = ngx_req.get_uri_args()
+    local request_method = core.request.get_method()
+    local args = core.request.get_uri_args(ctx)
 
     if canonical_uri == "" then
         canonical_uri = "/"
@@ -244,7 +221,16 @@ local function generate_signature(ctx, secret_key, params)
 
             -- whether to encode the uri parameters
             if type(param) == "table" then
+                local vals = {}
                 for _, val in pairs(param) do
+                    if type(val) == "boolean" then
+                        val = ""
+                    end
+                    core.table.insert(vals, val)
+                end
+                core.table.sort(vals)
+
+                for _, val in pairs(vals) do
                     core.table.insert(query_tab, encode_or_not(key) .. "=" .. encode_or_not(val))
                 end
             else
@@ -288,11 +274,11 @@ end
 
 local function validate(ctx, params)
     if not params.access_key or not params.signature then
-        return nil, {message = "access key or signature missing"}
+        return nil, "access key or signature missing"
     end
 
     if not params.algorithm then
-        return nil, {message = "algorithm missing"}
+        return nil, "algorithm missing"
     end
 
     local consumer, err = get_consumer(params.access_key)
@@ -302,7 +288,7 @@ local function validate(ctx, params)
 
     local conf = consumer.auth_conf
     if conf.algorithm ~= params.algorithm then
-        return nil, {message = "algorithm " .. params.algorithm .. " not supported"}
+        return nil, "algorithm " .. params.algorithm .. " not supported"
     end
 
     core.log.info("clock_skew: ", conf.clock_skew)
@@ -310,13 +296,13 @@ local function validate(ctx, params)
         local time = ngx.parse_http_time(params.date)
         core.log.info("params.date: ", params.date, " time: ", time)
         if not time then
-            return nil, {message = "Invalid GMT format time"}
+            return nil, "Invalid GMT format time"
         end
 
         local diff = abs(ngx_time() - time)
         core.log.info("gmt diff: ", diff)
         if diff > conf.clock_skew then
-            return nil, {message = "Clock skew exceeded"}
+            return nil, "Clock skew exceeded"
         end
     end
 
@@ -326,7 +312,7 @@ local function validate(ctx, params)
         if params.signed_headers then
             for _, header in ipairs(params.signed_headers) do
                 if not headers_map[header] then
-                    return nil, {message = "Invalid signed header " .. header}
+                    return nil, "Invalid signed header " .. header
                 end
             end
         end
@@ -340,27 +326,27 @@ local function validate(ctx, params)
                   " generated_signature: ", generated_signature)
 
     if request_signature ~= generated_signature then
-        return nil, {message = "Invalid signature"}
+        return nil, "Invalid signature"
     end
 
     local validate_request_body = get_conf_field(params.access_key, "validate_request_body")
     if validate_request_body then
         local digest_header = params.body_digest
         if not digest_header then
-            return nil, {message = "Invalid digest"}
+            return nil, "Invalid digest"
         end
 
         local max_req_body = get_conf_field(params.access_key, "max_req_body")
         local req_body, err = core.request.get_body(max_req_body, ctx)
         if err then
-            return nil, {message = "Exceed body limit size"}
+            return nil, "Exceed body limit size"
         end
 
         req_body = req_body or ""
         local request_body_hash = ngx_encode_base64(
                 hmac_funcs[params.algorithm](secret_key, req_body))
         if request_body_hash ~= digest_header then
-            return nil, {message = "Invalid digest"}
+            return nil, "Invalid digest"
         end
     end
 
@@ -440,12 +426,9 @@ end
 function _M.rewrite(conf, ctx)
     local params = get_params(ctx)
     local validated_consumer, err = validate(ctx, params)
-    if err then
-        return 401, err
-    end
-
     if not validated_consumer then
-        return 401, {message = "Invalid signature"}
+        core.log.warn("client request can't be validated: ", err or "Invalid signature")
+        return 401, {message = "client request can't be validated"}
     end
 
     local consumer_conf = consumer.plugin(plugin_name)

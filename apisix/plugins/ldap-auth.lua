@@ -17,13 +17,8 @@
 local core = require("apisix.core")
 local ngx = ngx
 local ngx_re = require("ngx.re")
-local ipairs = ipairs
 local consumer_mod = require("apisix.consumer")
-local lualdap = require("lualdap")
-
-local lrucache = core.lrucache.new({
-    ttl = 300, count = 512
-})
+local ok, ldap_cli = pcall(require, "resty.ldap.client")
 
 local schema = {
     type = "object",
@@ -31,8 +26,9 @@ local schema = {
     properties = {
         base_dn = { type = "string" },
         ldap_uri = { type = "string" },
-        use_tls = { type = "boolean" },
-        uid = { type = "string" }
+        use_tls = { type = "boolean", default = false },
+        tls_verify = { type = "boolean", default = false },
+        uid = { type = "string", default = "cn" }
     },
     required = {"base_dn","ldap_uri"},
 }
@@ -47,6 +43,7 @@ local consumer_schema = {
 }
 
 local plugin_name = "ldap-auth"
+
 
 local _M = {
     version = 0.1,
@@ -67,23 +64,6 @@ function _M.check_schema(conf, schema_type)
 
     return ok, err
 end
-
-local create_consumer_cache
-do
-    local consumer_names = {}
-
-    function create_consumer_cache(consumers)
-        core.table.clear(consumer_names)
-
-        for _, consumer in ipairs(consumers.nodes) do
-            core.log.info("consumer node: ", core.json.delay_encode(consumer))
-            consumer_names[consumer.auth_conf.user_dn] = consumer
-        end
-
-        return consumer_names
-    end
-
-end -- do
 
 local function extract_auth_header(authorization)
     local obj = { username = "", password = "" }
@@ -120,6 +100,11 @@ local function extract_auth_header(authorization)
 end
 
 function _M.rewrite(conf, ctx)
+    if not ok then -- ensure rasn library loaded
+        core.log.error("failed to load lua-resty-ldap lib: ", ldap_cli)
+        return 501
+    end
+
     core.log.info("plugin rewrite phase, conf: ", core.json.delay_encode(conf))
 
     -- 1. extract authorization from header
@@ -131,28 +116,40 @@ function _M.rewrite(conf, ctx)
 
     local user, err = extract_auth_header(auth_header)
     if err then
-        return 401, { message = err }
+        core.log.warn(err)
+        return 401, { message = "Invalid authorization in request" }
     end
 
     -- 2. try authenticate the user against the ldap server
-    local uid = conf.uid or "cn"
+    local ldap_host, ldap_port = core.utils.parse_addr(conf.ldap_uri)
+    local ldap_client = ldap_cli:new(ldap_host, ldap_port, {
+        start_tls = false,
+        ldaps = conf.use_tls,
+        ssl_verify = conf.tls_verify,
+        socket_timeout = 10000,
+        keepalive_pool_name = ldap_host .. ":" .. ldap_port .. "_ldapauth"
+                                .. (conf.use_tls and "_tls" or ""),
+        keepalive_pool_size = 5,
+        keepalive_timeout = 60000,
+    })
 
-    local userdn =  uid .. "=" .. user.username .. "," .. conf.base_dn
-    local ld = lualdap.open_simple (conf.ldap_uri, userdn, user.password, conf.use_tls)
-    if not ld then
+    local user_dn =  conf.uid .. "=" .. user.username .. "," .. conf.base_dn
+    local res, err = ldap_client:simple_bind(user_dn, user.password)
+    if not res then
+        core.log.warn("ldap-auth failed: ", err)
         return 401, { message = "Invalid user authorization" }
     end
 
     -- 3. Retrieve consumer for authorization plugin
     local consumer_conf = consumer_mod.plugin(plugin_name)
     if not consumer_conf then
-        return 401, {message = "Missing related consumer"}
+        return 401, { message = "Missing related consumer" }
     end
-    local consumers = lrucache("consumers_key", consumer_conf.conf_version,
-        create_consumer_cache, consumer_conf)
-    local consumer = consumers[userdn]
+
+    local consumers = consumer_mod.consumers_kv(plugin_name, consumer_conf, "user_dn")
+    local consumer = consumers[user_dn]
     if not consumer then
-        return 401, {message = "Invalid API key in request"}
+        return 401, {message = "Invalid user authorization"}
     end
     consumer_mod.attach_consumer(ctx, consumer, consumer_conf)
 

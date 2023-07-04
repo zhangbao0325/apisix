@@ -165,6 +165,8 @@ local function set_common_header(data)
     local local_conf = core.config.local_conf()
     local real_ip_hdr = core.table.try_read_attr(local_conf, "nginx_config", "http",
                                                  "real_ip_header")
+    -- we don't need to handle '_' to '-' as Nginx won't treat 'X_REAL_IP' as 'X-Real-IP'
+    real_ip_hdr = str_lower(real_ip_hdr)
 
     local outer_headers = core.request.headers(nil)
     for i,req in ipairs(data.pipeline) do
@@ -273,7 +275,14 @@ local function batch_requests(ctx)
             headers = resp.headers,
         }
         if resp.has_body then
-            sub_resp.body = resp:read_body()
+            local err
+            sub_resp.body, err = resp:read_body()
+            if err then
+                sub_resp.read_body_err = err
+                core.log.error("read pipeline response body failed: ", err)
+            else
+                resp:read_trailers()
+            end
         end
         core.table.insert(aggregated_resp, sub_resp)
     end

@@ -21,24 +21,13 @@ title: dubbo-proxy
 #
 -->
 
-## 摘要
-
-- [**简介**](#简介)
-- [**要求**](#要求)
-- [**运行时属性**](#运行时属性)
-- [**静态属性**](#静态属性)
-- [**如何启用**](#如何启用)
-- [**测试插件**](#测试插件)
-- [**禁用插件**](#禁用插件)
-
-## 简介
+## 描述
 
 `dubbo-proxy` 插件允许将 `HTTP` 请求代理到 [**dubbo**](http://dubbo.apache.org)。
 
 ## 要求
 
-如果你正在使用 `OpenResty`, 你需要编译它来支持 `dubbo`, 参考 [如何编译](../how-to-build.md#步骤6：为-Apache-APISIX-构建-OpenResty)。
-在 `APISIX` 中为了实现使从 `http` 代理到 `dubbo`，我们在 `Tengine` 的 `mod_dubbo` 基础上对 `dubbo` 模块做了改进。 所有的修改已经提交给 `Tengine`，但是还未合并到最新的 `release` 版本中(Tengine-2.3.2) 。所以目前 `Tengine` 自身是不支持此特性的。
+如果你正在使用 `OpenResty`, 你需要编译它来支持 `dubbo`, 参考 [APISIX-Base](../FAQ#如何构建-apisix-base-环境)。
 
 ## 运行时属性
 
@@ -46,7 +35,7 @@ title: dubbo-proxy
 | ------------ | ------ | ----------- | -------- | ------------ | -------------------------------------------------------------------- |
 | service_name    | string | 必选  |          |              | dubbo 服务名字 |
 | service_version | string | 必选    |          |              | dubbo 服务版本 |
-| method          | string | 可选    | uri路径 |     | dubbo 服务方法 |
+| method          | string | 可选    | uri 路径 |     | dubbo 服务方法 |
 
 ## 静态属性
 
@@ -56,7 +45,7 @@ title: dubbo-proxy
 
 ## 如何启用
 
-首先，在 `config.yaml` 中启用 `dubbo-proxy` 插件:
+首先，在 `config.yaml` 中启用 `dubbo-proxy` 插件：
 
 ```
 # Add this in config.yaml
@@ -67,10 +56,10 @@ plugins:
 
 然后重载 `APISIX`。
 
-这里有个例子，在指定的路由中启用 `dubbo-proxy` 插件:
+这里有个例子，在指定的路由中启用 `dubbo-proxy` 插件：
 
 ```shell
-curl http://127.0.0.1:9080/apisix/admin/upstreams/1  -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+curl http://127.0.0.1:9180/apisix/admin/upstreams/1  -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
 {
     "nodes": {
         "127.0.0.1:20880": 1
@@ -78,7 +67,7 @@ curl http://127.0.0.1:9080/apisix/admin/upstreams/1  -H 'X-API-KEY: edd1c9f03433
     "type": "roundrobin"
 }'
 
-curl http://127.0.0.1:9080/apisix/admin/routes/1  -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+curl http://127.0.0.1:9180/apisix/admin/routes/1  -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
 {
     "uris": [
         "/hello"
@@ -130,7 +119,7 @@ blahblah # "body" will be the body
 当你想在某个路由或服务中禁用 `dubbo-proxy` 插件，非常简单，你可以直接删除插件配置中的 `json` 配置，不需要重启服务就能立即生效：
 
 ```shell
-$ curl http://127.0.0.1:9080/apisix/admin/routes/1  -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+$ curl http://127.0.0.1:9180/apisix/admin/routes/1  -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
 {
     "methods": ["GET"],
     "uris": [
@@ -143,10 +132,10 @@ $ curl http://127.0.0.1:9080/apisix/admin/routes/1  -H 'X-API-KEY: edd1c9f034335
 }'
 ```
 
-现在 `dubbo-proxy` 插件就已经被禁用了。 此方法同样适用于其他插件。
+现在 `dubbo-proxy` 插件就已经被禁用了。此方法同样适用于其他插件。
 
 如果你想彻底禁用 `dubbo-proxy` 插件，
-你需要在 `config.yaml` 中注释掉以下内容:
+你需要在 `config.yaml` 中注释掉以下内容：
 
 ```yaml
 plugins:

@@ -27,10 +27,6 @@ add_block_preprocessor(sub {
     if (!$block->request) {
         $block->set_value("request", "GET /t");
     }
-
-    if (!$block->error_log && !$block->no_error_log) {
-        $block->set_value("no_error_log", "[error]");
-    }
 });
 
 run_tests;
@@ -400,7 +396,7 @@ x-real-ip: 127.0.0.1
                 ngx.HTTP_GET,
                 nil,
                 [[
-{"properties":{"disable":{"type":"boolean"}},"title":"work with route or service object","type":"object"}
+{"properties":{},"title":"work with route or service object","type":"object"}
                 ]]
                 )
             ngx.status = code
@@ -436,7 +432,7 @@ x-real-ip: 127.0.0.1
                 ngx.HTTP_GET,
                 nil,
                 [[
-{"properties":{"disable":{"type":"boolean"}},"title":"work with route or service object","type":"object"}
+{"properties":{},"title":"work with route or service object","type":"object"}
                 ]]
                 )
             ngx.status = code
@@ -559,8 +555,12 @@ location /t {
     }
 }
 --- error_code: 401
+--- grep_error_log eval
+qr/client request can't be validated: [^,]+/
+--- grep_error_log_out
+client request can't be validated: Invalid signature
 --- response_body eval
-qr/\{"message":"Invalid signature"\}/
+qr/\{"message":"client request can't be validated"\}/
 --- error_log eval
 qr/name=LeBron\%2Cjames\&name2=\%2C\%3E/
 
@@ -707,8 +707,12 @@ location /t {
     }
 }
 --- error_code: 401
+--- grep_error_log eval
+qr/client request can't be validated: [^,]+/
+--- grep_error_log_out
+client request can't be validated: Invalid signature
 --- response_body eval
-qr/\{"message":"Invalid signature"\}/
+qr/\{"message":"client request can't be validated"\}/
 
 
 

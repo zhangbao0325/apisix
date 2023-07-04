@@ -18,6 +18,7 @@
 local yaml = require("tinyyaml")
 local profile = require("apisix.core.profile")
 local util = require("apisix.cli.util")
+local dkjson = require("dkjson")
 
 local pairs = pairs
 local type = type
@@ -27,6 +28,7 @@ local getenv = os.getenv
 local str_gmatch = string.gmatch
 local str_find = string.find
 local str_sub = string.sub
+local print = print
 
 local _M = {}
 local exported_vars
@@ -112,6 +114,24 @@ local function resolve_conf_var(conf)
 end
 
 
+_M.resolve_conf_var = resolve_conf_var
+
+
+local function replace_by_reserved_env_vars(conf)
+    -- TODO: support more reserved environment variables
+    local v = getenv("APISIX_DEPLOYMENT_ETCD_HOST")
+    if v and conf["deployment"] and conf["deployment"]["etcd"] then
+        local val, _, err = dkjson.decode(v)
+        if err or not val then
+            print("parse ${APISIX_DEPLOYMENT_ETCD_HOST} failed, error:", err)
+            return
+        end
+
+        conf["deployment"]["etcd"]["host"] = val
+    end
+end
+
+
 local function tinyyaml_type(t)
     local mt = getmetatable(t)
     if mt then
@@ -130,7 +150,7 @@ local function path_is_multi_type(path, type_val)
         return true
     end
 
-    if path == "apisix->ssl->listen_port" and type_val == "number" then
+    if path == "apisix->ssl->key_encrypt_salt" then
         return true
     end
 
@@ -233,6 +253,54 @@ function _M.read_yaml_conf(apisix_home)
             return nil, err
         end
     end
+
+    if default_conf.deployment then
+        default_conf.deployment.config_provider = "etcd"
+        if default_conf.deployment.role == "traditional" then
+            default_conf.etcd = default_conf.deployment.etcd
+
+        elseif default_conf.deployment.role == "control_plane" then
+            default_conf.etcd = default_conf.deployment.etcd
+            default_conf.apisix.enable_admin = true
+
+        elseif default_conf.deployment.role == "data_plane" then
+            if default_conf.deployment.role_data_plane.config_provider == "yaml" then
+                default_conf.deployment.config_provider = "yaml"
+            elseif default_conf.deployment.role_data_plane.config_provider == "xds" then
+                default_conf.deployment.config_provider = "xds"
+            else
+                default_conf.etcd = default_conf.deployment.role_data_plane.control_plane
+            end
+            default_conf.apisix.enable_admin = false
+        end
+
+        if default_conf.etcd and default_conf.deployment.certs then
+            -- copy certs configuration to keep backward compatible
+            local certs = default_conf.deployment.certs
+            local etcd = default_conf.etcd
+            if not etcd.tls then
+                etcd.tls = {}
+            end
+            etcd.tls.cert = certs.cert
+            etcd.tls.key = certs.cert_key
+        end
+    end
+
+    if default_conf.deployment.config_provider == "yaml" then
+        local apisix_conf_path = profile:yaml_path("apisix")
+        local apisix_conf_yaml, _ = util.read_file(apisix_conf_path)
+        if apisix_conf_yaml then
+            local apisix_conf = yaml.parse(apisix_conf_yaml)
+            if apisix_conf then
+                local ok, err = resolve_conf_var(apisix_conf)
+                if not ok then
+                    return nil, err
+                end
+            end
+        end
+    end
+
+    replace_by_reserved_env_vars(default_conf)
 
     return default_conf
 end

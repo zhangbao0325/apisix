@@ -21,12 +21,16 @@
 install_dependencies() {
     export_or_prefix
 
-    # install development tools
+    # install build & runtime deps
     yum install -y wget tar gcc automake autoconf libtool make unzip \
-        git which sudo openldap-devel
+        git sudo openldap-devel which ca-certificates openssl-devel \
+        epel-release
 
-    # curl with http2
-    wget https://github.com/moparisthebest/static-curl/releases/download/v7.79.1/curl-amd64 -O /usr/bin/curl
+    # install newer curl
+    yum makecache
+    yum install -y libnghttp2-devel
+    install_curl
+
     # install openresty to make apisix's rpm test work
     yum install -y yum-utils && yum-config-manager --add-repo https://openresty.org/package/centos/openresty.repo
     yum install -y openresty openresty-debug openresty-openssl111-debug-devel pcre pcre-devel
@@ -35,10 +39,10 @@ install_dependencies() {
     ./utils/linux-install-luarocks.sh
 
     # install etcdctl
-    wget https://github.com/etcd-io/etcd/releases/download/v3.4.0/etcd-v3.4.0-linux-amd64.tar.gz
-    tar xf etcd-v3.4.0-linux-amd64.tar.gz
-    cp ./etcd-v3.4.0-linux-amd64/etcdctl /usr/local/bin/
-    rm -rf etcd-v3.4.0-linux-amd64
+    ./ci/linux-install-etcd-client.sh
+
+    # install vault cli capabilities
+    install_vault_cli
 
     # install test::nginx
     yum install -y cpanminus perl
@@ -47,21 +51,15 @@ install_dependencies() {
     # add go1.15 binary to the path
     mkdir build-cache
     # centos-7 ci runs on a docker container with the centos image on top of ubuntu host. Go is required inside the container.
-    cd build-cache/ && wget https://golang.org/dl/go1.15.linux-amd64.tar.gz && tar -xf go1.15.linux-amd64.tar.gz
+    cd build-cache/ && wget -q https://golang.org/dl/go1.17.linux-amd64.tar.gz && tar -xf go1.17.linux-amd64.tar.gz
     export PATH=$PATH:$(pwd)/go/bin
     cd ..
     # install and start grpc_server_example
     cd t/grpc_server_example
 
-    # unless pulled recursively, the submodule directory will remain empty. So it's better to initialize and set the submodule to the particular commit.
-    if [ ! "$(ls -A . )" ]; then
-        git submodule init
-        git submodule update
-    fi
-
     CGO_ENABLED=0 go build
     ./grpc_server_example \
-        -grpc-address :50051 -grpcs-address :50052 -grpcs-mtls-address :50053 \
+        -grpc-address :50051 -grpcs-address :50052 -grpcs-mtls-address :50053 -grpc-http-address :50054 \
         -crt ../certs/apisix.crt -key ../certs/apisix.key -ca ../certs/mtls_ca.crt \
         > grpc_server_example.log 2>&1 || (cat grpc_server_example.log && exit 1)&
 
@@ -72,17 +70,30 @@ install_dependencies() {
     # installing grpcurl
     install_grpcurl
 
+    # install nodejs
+    install_nodejs
+
+    # install rust
+    install_rust
+
+    # grpc-web server && client
+    cd t/plugin/grpc-web
+    ./setup.sh
+    # back to home directory
+    cd ../../../
+
     # install dependencies
-    git clone https://github.com/iresty/test-nginx.git test-nginx
+    git clone https://github.com/openresty/test-nginx.git test-nginx
     create_lua_deps
 }
 
 run_case() {
     export_or_prefix
     make init
-    ./utils/set-dns.sh
+    set_coredns
     # run test cases
-    FLUSH_ETCD=1 prove -I./test-nginx/lib -I./ -r t/
+    FLUSH_ETCD=1 prove --timer -Itest-nginx/lib -I./ -r ${TEST_FILE_SUB_DIR} | tee /tmp/test.result
+    rerun_flaky_tests /tmp/test.result
 }
 
 case_opt=$1

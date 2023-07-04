@@ -69,8 +69,6 @@ qr/random seed \d+(\.\d+)?(e\+\d+)?\ntwice: false/
     }
 --- request
 GET /t
---- no_error_log
-[error]
 
 
 
@@ -81,9 +79,10 @@ GET /t
             local core = require("apisix.core")
             local resolvers = {"8.8.8.8"}
             core.utils.set_resolver(resolvers)
-            local ip_info, err = core.utils.dns_parse("github.com")
+            local domain = "github.com"
+            local ip_info, err = core.utils.dns_parse(domain)
             if not ip_info then
-                core.log.error("failed to parse domain: ", host, ", error: ",err)
+                core.log.error("failed to parse domain: ", domain, ", error: ",err)
             end
             ngx.say(require("toolkit.json").encode(ip_info))
         }
@@ -92,8 +91,6 @@ GET /t
 GET /t
 --- response_body eval
 qr/"address":.+,"name":"github.com"/
---- no_error_log
-[error]
 
 
 
@@ -102,9 +99,10 @@ qr/"address":.+,"name":"github.com"/
     location /t {
         content_by_lua_block {
             local core = require("apisix.core")
-            local ip_info, err = core.utils.dns_parse("github.com")
+            local domain = "github.com"
+            local ip_info, err = core.utils.dns_parse(domain)
             if not ip_info then
-                core.log.error("failed to parse domain: ", host, ", error: ",err)
+                core.log.error("failed to parse domain: ", domain, ", error: ",err)
             end
             core.log.info("ip_info: ", require("toolkit.json").encode(ip_info))
             ngx.say("resolvers: ", require("toolkit.json").encode(core.utils.get_resolver()))
@@ -116,8 +114,6 @@ GET /t
 resolvers: ["8.8.8.8","114.114.114.114"]
 --- error_log eval
 qr/"address":.+,"name":"github.com"/
---- no_error_log
-[error]
 
 
 
@@ -126,8 +122,6 @@ qr/"address":.+,"name":"github.com"/
 apisix:
   node_listen: 1984
   enable_server_tokens: false
-  admin_key: null
-
 --- config
 location /t {
     content_by_lua_block {
@@ -200,8 +194,6 @@ received: Connection: close
 received: Server: APISIX
 received: \nreceived: hello world
 close: 1 nil}
---- no_error_log
-[error]
 
 
 
@@ -257,9 +249,10 @@ res:JohnDavid
     location /t {
         content_by_lua_block {
             local core = require("apisix.core")
-            local ip_info, err = core.utils.dns_parse("test.com")
+            local domain = "test.com"
+            local ip_info, err = core.utils.dns_parse(domain)
             if not ip_info then
-                core.log.error("failed to parse domain: ", host, ", error: ",err)
+                core.log.error("failed to parse domain: ", domain, ", error: ",err)
                 return
             end
             ngx.say("ip_info: ", require("toolkit.json").encode(ip_info))
@@ -269,8 +262,6 @@ res:JohnDavid
 GET /t
 --- response_body
 ip_info: {"address":"127.0.0.1","class":1,"name":"test.com","ttl":315360000,"type":1}
---- no_error_log
-[error]
 
 
 
@@ -283,9 +274,10 @@ apisix:
     location /t {
         content_by_lua_block {
             local core = require("apisix.core")
-            local ip_info, err = core.utils.dns_parse("apisix")
+            local domain = "apisix"
+            local ip_info, err = core.utils.dns_parse(domain)
             if not ip_info then
-                core.log.error("failed to parse domain: ", host, ", error: ",err)
+                core.log.error("failed to parse domain: ", domain, ", error: ",err)
                 return
             end
             ngx.say("ip_info: ", require("toolkit.json").encode(ip_info))
@@ -295,8 +287,6 @@ apisix:
 GET /t
 --- response_body_like
 .+"name":"apisix\.apache\.org".+
---- no_error_log
-[error]
 
 
 
@@ -309,9 +299,10 @@ apisix:
     location /t {
         content_by_lua_block {
             local core = require("apisix.core")
-            local ip_info, err = core.utils.dns_parse("apisix")
+            local domain = "apisix"
+            local ip_info, err = core.utils.dns_parse(domain)
             if not ip_info then
-                core.log.error("failed to parse domain: ", host, ", error: ",err)
+                core.log.error("failed to parse domain: ", domain, ", error: ",err)
                 return
             end
             ngx.say("ip_info: ", require("toolkit.json").encode(ip_info))
@@ -322,3 +313,83 @@ GET /t
 --- error_log
 error: failed to query the DNS server
 --- timeout: 10
+
+
+
+=== TEST 10: test dns config with ipv6 enable
+--- yaml_config
+apisix:
+  enable_ipv6: true
+--- config
+    location /t {
+        content_by_lua_block {
+            local core = require("apisix.core")
+            local domain = "ipv6.local"
+            local ip_info, err = core.utils.dns_parse(domain)
+            if not ip_info then
+                core.log.error("failed to parse domain: ", domain, ", error: ",err)
+                return
+            end
+            ngx.say("ip_info: ", require("toolkit.json").encode(ip_info))
+        }
+    }
+--- request
+GET /t
+--- response_body
+ip_info: {"address":"[::1]","class":1,"name":"ipv6.local","ttl":315360000,"type":28}
+
+
+
+=== TEST 11: test dns config with ipv6 disable
+--- yaml_config
+apisix:
+  enable_ipv6: false
+--- config
+    location /t {
+        content_by_lua_block {
+            local core = require("apisix.core")
+            local domain = "ipv6.local"
+            local ip_info, err = core.utils.dns_parse(domain)
+            if not ip_info then
+                core.log.error("failed to parse domain: ", domain, ", error: ",err)
+                return
+            end
+            ngx.say("ip_info: ", require("toolkit.json").encode(ip_info))
+        }
+    }
+--- request
+GET /t
+--- error_log
+failed to parse domain: ipv6.local
+
+
+
+=== TEST 12: get_last_index
+--- config
+    location /t {
+        content_by_lua_block {
+            local string_rfind = require("pl.stringx").rfind
+            local cases = {
+                {"you are welcome", "co"},
+                {"nice to meet you", "meet"},
+                {"chicken run", "cc"},
+                {"day day up", "day"},
+                {"happy new year", "e"},
+                {"apisix__1928", "__"}
+            }
+
+            for _, case in ipairs(cases) do
+                local res = string_rfind(case[1], case[2])
+                ngx.say("res:", res)
+            end
+        }
+    }
+--- request
+GET /t
+--- response_body
+res:12
+res:9
+res:nil
+res:5
+res:12
+res:7

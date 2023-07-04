@@ -20,10 +20,15 @@ local util = require("apisix.cli.util")
 local file = require("apisix.cli.file")
 local schema = require("apisix.cli.schema")
 local ngx_tpl = require("apisix.cli.ngx_tpl")
+local cli_ip = require("apisix.cli.ip")
+local snippet = require("apisix.cli.snippet")
 local profile = require("apisix.core.profile")
 local template = require("resty.template")
 local argparse = require("argparse")
 local pl_path = require("pl.path")
+local lfs = require("lfs")
+local signal = require("posix.signal")
+local errno = require("posix.errno")
 
 local stderr = io.stderr
 local ipairs = ipairs
@@ -35,7 +40,9 @@ local tonumber = tonumber
 local io_open = io.open
 local execute = os.execute
 local os_rename = os.rename
+local os_remove = os.remove
 local table_insert = table.insert
+local table_remove = table.remove
 local getenv = os.getenv
 local max = math.max
 local floor = math.floor
@@ -51,7 +58,7 @@ local function help()
     print([[
 Usage: apisix [action] <argument>
 
-help:       show this message, then exit
+help:       print the apisix cli help message
 init:       initialize the local nginx.conf
 init_etcd:  initialize the data of etcd
 start:      start the apisix server
@@ -59,6 +66,7 @@ stop:       stop the apisix server
 quit:       stop the apisix server gracefully
 restart:    restart the apisix server
 reload:     reload the apisix server
+test:       test the generated nginx.conf
 version:    print the version of apisix
 ]])
 end
@@ -155,7 +163,7 @@ local function init(env)
     end
 
     local min_ulimit = 1024
-    if env.ulimit <= min_ulimit then
+    if env.ulimit ~= "unlimited" and env.ulimit <= min_ulimit then
         print(str_format("Warning! Current maximum number of open file "
                 .. "descriptors [%d] is not greater than %d, please increase user limits by "
                 .. "execute \'ulimit -n <new user limits>\' , otherwise the performance"
@@ -175,12 +183,18 @@ local function init(env)
 
     -- check the Admin API token
     local checked_admin_key = false
-    if yaml_conf.apisix.enable_admin and yaml_conf.apisix.allow_admin then
-        for _, allow_ip in ipairs(yaml_conf.apisix.allow_admin) do
-            if allow_ip == "127.0.0.0/24" then
-                checked_admin_key = true
-            end
-        end
+    local allow_admin = yaml_conf.deployment.admin and
+        yaml_conf.deployment.admin.allow_admin
+    if yaml_conf.apisix.enable_admin and allow_admin
+       and #allow_admin == 1 and allow_admin[1] == "127.0.0.0/24" then
+        checked_admin_key = true
+    end
+    -- check if admin_key is required
+    if yaml_conf.deployment.admin.admin_key_required == false then
+        checked_admin_key = true
+        print("Warning! Admin key is bypassed! "
+                .. "If you are deploying APISIX in a production environment, "
+                .. "please disable `admin_key_required` and set a secure admin key!")
     end
 
     if yaml_conf.apisix.enable_admin and not checked_admin_key then
@@ -190,13 +204,17 @@ local function init(env)
 Please modify "admin_key" in conf/config.yaml .
 
 ]]
-        if type(yaml_conf.apisix.admin_key) ~= "table" or
-           #yaml_conf.apisix.admin_key == 0
+        local admin_key = yaml_conf.deployment.admin
+        if admin_key then
+            admin_key = admin_key.admin_key
+        end
+
+        if type(admin_key) ~= "table" or #admin_key == 0
         then
             util.die(help:format("ERROR: missing valid Admin API token."))
         end
 
-        for _, admin in ipairs(yaml_conf.apisix.admin_key) do
+        for _, admin in ipairs(admin_key) do
             if type(admin.key) == "table" then
                 admin.key = ""
             else
@@ -216,10 +234,23 @@ Please modify "admin_key" in conf/config.yaml .
         end
     end
 
+    if yaml_conf.deployment.admin then
+        local admin_api_mtls = yaml_conf.deployment.admin.admin_api_mtls
+        local https_admin = yaml_conf.deployment.admin.https_admin
+        if https_admin and not (admin_api_mtls and
+            admin_api_mtls.admin_ssl_cert and
+            admin_api_mtls.admin_ssl_cert ~= "" and
+            admin_api_mtls.admin_ssl_cert_key and
+            admin_api_mtls.admin_ssl_cert_key ~= "")
+        then
+            util.die("missing ssl cert for https admin")
+        end
+    end
+
     if yaml_conf.apisix.enable_admin and
-        yaml_conf.apisix.config_center == "yaml"
+        yaml_conf.deployment.config_provider == "yaml"
     then
-        util.die("ERROR: Admin API can only be used with etcd config_center.\n")
+        util.die("ERROR: Admin API can only be used with etcd config_provider.\n")
     end
 
     local or_ver = get_openresty_version()
@@ -227,33 +258,37 @@ Please modify "admin_key" in conf/config.yaml .
         util.die("can not find openresty\n")
     end
 
-    local need_ver = "1.17.3"
+    local need_ver = "1.19.3"
     if not version_greater_equal(or_ver, need_ver) then
         util.die("openresty version must >=", need_ver, " current ", or_ver, "\n")
     end
 
-    local use_openresty_1_17 = false
-    if not version_greater_equal(or_ver, "1.19.3") then
-        use_openresty_1_17 = true
+    local or_info = env.openresty_info
+    if not or_info:find("http_stub_status_module", 1, true) then
+        util.die("'http_stub_status_module' module is missing in ",
+                 "your openresty, please check it out.\n")
     end
 
-    local or_info = util.execute_cmd("openresty -V 2>&1")
-    local with_module_status = true
-    if or_info and not or_info:find("http_stub_status_module", 1, true) then
-        stderr:write("'http_stub_status_module' module is missing in ",
-                     "your openresty, please check it out. Without this ",
-                     "module, there will be fewer monitoring indicators.\n")
-        with_module_status = false
+    local enable_http = true
+    if not yaml_conf.apisix.enable_admin and yaml_conf.apisix.stream_proxy and
+        yaml_conf.apisix.stream_proxy.only ~= false
+    then
+        enable_http = false
     end
 
-    local use_apisix_openresty = true
-    if or_info and not or_info:find("apisix-nginx-module", 1, true) then
-        use_apisix_openresty = false
+    local enabled_discoveries = {}
+    for name in pairs(yaml_conf.discovery or {}) do
+        enabled_discoveries[name] = true
     end
 
     local enabled_plugins = {}
-    for i, name in ipairs(yaml_conf.plugins) do
+    for i, name in ipairs(yaml_conf.plugins or {}) do
         enabled_plugins[name] = true
+    end
+
+    local enabled_stream_plugins = {}
+    for i, name in ipairs(yaml_conf.stream_plugins or {}) do
+        enabled_stream_plugins[name] = true
     end
 
     if enabled_plugins["proxy-cache"] and not yaml_conf.apisix.proxy_cache then
@@ -267,68 +302,52 @@ Please modify "admin_key" in conf/config.yaml .
         -- not disabled by the users
         if real_ip_from then
             for _, ip in ipairs(real_ip_from) do
-                -- TODO: handle cidr
-                if ip == "127.0.0.1" or ip == "0.0.0.0/0" then
-                    pass_real_client_ip = true
+                local _ip = cli_ip:new(ip)
+                if _ip then
+                    if _ip:is_loopback() or _ip:is_unspecified() then
+                        pass_real_client_ip = true
+                    end
                 end
             end
         end
 
         if not pass_real_client_ip then
-            util.die("missing '127.0.0.1' in the nginx_config.http.real_ip_from for plugin " ..
-                     "batch-requests\n")
+            util.die("missing loopback or unspecified in the nginx_config.http.real_ip_from" ..
+                     " for plugin batch-requests\n")
         end
     end
 
     local ports_to_check = {}
 
+    local function validate_and_get_listen_addr(port_name, default_ip, configured_ip,
+                                                default_port, configured_port)
+        local ip = configured_ip or default_ip
+        local port = tonumber(configured_port) or default_port
+        if ports_to_check[port] ~= nil then
+            util.die(port_name .. " ", port, " conflicts with ", ports_to_check[port], "\n")
+        end
+        ports_to_check[port] = port_name
+        return ip .. ":" .. port
+    end
+
     -- listen in admin use a separate port, support specific IP, compatible with the original style
     local admin_server_addr
     if yaml_conf.apisix.enable_admin then
-        if yaml_conf.apisix.admin_listen or yaml_conf.apisix.port_admin then
-            local ip = "0.0.0.0"
-            local port = yaml_conf.apisix.port_admin or 9180
-
-            if yaml_conf.apisix.admin_listen then
-                ip = yaml_conf.apisix.admin_listen.ip or ip
-                port = tonumber(yaml_conf.apisix.admin_listen.port) or port
-            end
-
-            if ports_to_check[port] ~= nil then
-                util.die("admin port ", port, " conflicts with ", ports_to_check[port], "\n")
-            end
-
-            admin_server_addr = ip .. ":" .. port
-            ports_to_check[port] = "admin"
-        end
+        local ip = yaml_conf.deployment.admin.admin_listen.ip
+        local port = yaml_conf.deployment.admin.admin_listen.port
+        admin_server_addr = validate_and_get_listen_addr("admin port", "0.0.0.0", ip,
+                                                          9180, port)
     end
 
     local control_server_addr
     if yaml_conf.apisix.enable_control then
         if not yaml_conf.apisix.control then
-            if ports_to_check[9090] ~= nil then
-                util.die("control port 9090 conflicts with ", ports_to_check[9090], "\n")
-            end
-            control_server_addr = "127.0.0.1:9090"
-            ports_to_check[9090] = "control"
+            control_server_addr = validate_and_get_listen_addr("control port", "127.0.0.1", nil,
+                                          9090, nil)
         else
-            local ip = yaml_conf.apisix.control.ip
-            local port = tonumber(yaml_conf.apisix.control.port)
-
-            if ip == nil then
-                ip = "127.0.0.1"
-            end
-
-            if not port then
-                port = 9090
-            end
-
-            if ports_to_check[port] ~= nil then
-                util.die("control port ", port, " conflicts with ", ports_to_check[port], "\n")
-            end
-
-            control_server_addr = ip .. ":" .. port
-            ports_to_check[port] = "control"
+            control_server_addr = validate_and_get_listen_addr("control port", "127.0.0.1",
+                                          yaml_conf.apisix.control.ip,
+                                          9090, yaml_conf.apisix.control.port)
         end
     end
 
@@ -336,24 +355,14 @@ Please modify "admin_key" in conf/config.yaml .
     if yaml_conf.plugin_attr.prometheus then
         local prometheus = yaml_conf.plugin_attr.prometheus
         if prometheus.enable_export_server then
-            local ip = prometheus.export_addr.ip
-            local port = tonumber(prometheus.export_addr.port)
-
-            if ip == nil then
-                ip = "127.0.0.1"
-            end
-
-            if not port then
-                port = 9091
-            end
-
-            if ports_to_check[port] ~= nil then
-                util.die("prometheus port ", port, " conflicts with ", ports_to_check[port], "\n")
-            end
-
-            prometheus_server_addr = ip .. ":" .. port
-            ports_to_check[port] = "prometheus"
+            prometheus_server_addr = validate_and_get_listen_addr("prometheus port", "127.0.0.1",
+                                             prometheus.export_addr.ip,
+                                             9091, prometheus.export_addr.port)
         end
+    end
+
+    if enabled_stream_plugins["prometheus"] and not prometheus_server_addr then
+        util.die("L4 prometheus metric should be exposed via export server\n")
     end
 
     local ip_port_to_check = {}
@@ -433,46 +442,28 @@ Please modify "admin_key" in conf/config.yaml .
     local ssl_listen = {}
     -- listen in https, support multiple ports, support specific IP
     for _, value in ipairs(yaml_conf.apisix.ssl.listen) do
-        if type(value) == "number" then
-            listen_table_insert(ssl_listen, "https", "0.0.0.0", value,
-                    yaml_conf.apisix.ssl.enable_http2, yaml_conf.apisix.enable_ipv6)
-        elseif type(value) == "table" then
-            local ip = value.ip
-            local port = value.port
-            local enable_ipv6 = false
-            local enable_http2 = (value.enable_http2 or yaml_conf.apisix.ssl.enable_http2)
+        local ip = value.ip
+        local port = value.port
+        local enable_ipv6 = false
+        local enable_http2 = value.enable_http2
 
-            if ip == nil then
-                ip = "0.0.0.0"
-                if yaml_conf.apisix.enable_ipv6 then
-                    enable_ipv6 = true
-                end
-            end
-
-            if port == nil then
-                port = 9443
-            end
-
-            if enable_http2 == nil then
-                enable_http2 = false
-            end
-
-            listen_table_insert(ssl_listen, "https", ip, port,
-                    enable_http2, enable_ipv6)
-        end
-    end
-
-    -- listen in https, compatible with the original style
-    if type(yaml_conf.apisix.ssl.listen_port) == "number" then
-        listen_table_insert(ssl_listen, "https", "0.0.0.0", yaml_conf.apisix.ssl.listen_port,
-                yaml_conf.apisix.ssl.enable_http2, yaml_conf.apisix.enable_ipv6)
-    elseif type(yaml_conf.apisix.ssl.listen_port) == "table" then
-        for _, value in ipairs(yaml_conf.apisix.ssl.listen_port) do
-            if type(value) == "number" then
-                listen_table_insert(ssl_listen, "https", "0.0.0.0", value,
-                        yaml_conf.apisix.ssl.enable_http2, yaml_conf.apisix.enable_ipv6)
+        if ip == nil then
+            ip = "0.0.0.0"
+            if yaml_conf.apisix.enable_ipv6 then
+                enable_ipv6 = true
             end
         end
+
+        if port == nil then
+            port = 9443
+        end
+
+        if enable_http2 == nil then
+            enable_http2 = false
+        end
+
+        listen_table_insert(ssl_listen, "https", ip, port,
+                enable_http2, enable_ipv6)
     end
 
     yaml_conf.apisix.ssl.listen = ssl_listen
@@ -484,23 +475,11 @@ Please modify "admin_key" in conf/config.yaml .
         -- Therefore we need to check the absolute version instead
         cert_path = pl_path.abspath(cert_path)
 
-        local ok, err = util.is_file_exist(cert_path)
-        if not ok then
-            util.die(err, "\n")
+        if not pl_path.exists(cert_path) then
+            util.die("certificate path", cert_path, "doesn't exist\n")
         end
 
         yaml_conf.apisix.ssl.ssl_trusted_certificate = cert_path
-    end
-
-    local admin_api_mtls = yaml_conf.apisix.admin_api_mtls
-    if yaml_conf.apisix.https_admin and
-       not (admin_api_mtls and
-            admin_api_mtls.admin_ssl_cert and
-            admin_api_mtls.admin_ssl_cert ~= "" and
-            admin_api_mtls.admin_ssl_cert_key and
-            admin_api_mtls.admin_ssl_cert_key ~= "")
-    then
-        util.die("missing ssl cert for https admin")
     end
 
     -- enable ssl with place holder crt&key
@@ -536,22 +515,46 @@ Please modify "admin_key" in conf/config.yaml .
         end
     end
 
+    local proxy_mirror_timeouts
+    if yaml_conf.plugin_attr["proxy-mirror"] then
+        proxy_mirror_timeouts = yaml_conf.plugin_attr["proxy-mirror"].timeout
+    end
+
+    local conf_server, err = snippet.generate_conf_server(env, yaml_conf)
+    if err then
+        util.die(err, "\n")
+    end
+
+    if yaml_conf.deployment and yaml_conf.deployment.role then
+        local role = yaml_conf.deployment.role
+        env.deployment_role = role
+
+        if role == "control_plane" and not admin_server_addr then
+            local listen = node_listen[1]
+            admin_server_addr = str_format("%s:%s", listen.ip, listen.port)
+        end
+    end
+
     -- Using template.render
     local sys_conf = {
-        use_openresty_1_17 = use_openresty_1_17,
         lua_path = env.pkg_path_org,
         lua_cpath = env.pkg_cpath_org,
         os_name = util.trim(util.execute_cmd("uname")),
         apisix_lua_home = env.apisix_home,
-        with_module_status = with_module_status,
-        use_apisix_openresty = use_apisix_openresty,
+        deployment_role = env.deployment_role,
+        use_apisix_base = env.use_apisix_base,
         error_log = {level = "warn"},
+        enable_http = enable_http,
+        enabled_discoveries = enabled_discoveries,
         enabled_plugins = enabled_plugins,
+        enabled_stream_plugins = enabled_stream_plugins,
         dubbo_upstream_multiplex_count = dubbo_upstream_multiplex_count,
         tcp_enable_ssl = tcp_enable_ssl,
         admin_server_addr = admin_server_addr,
         control_server_addr = control_server_addr,
         prometheus_server_addr = prometheus_server_addr,
+        proxy_mirror_timeouts = proxy_mirror_timeouts,
+        conf_server = conf_server,
     }
 
     if not yaml_conf.apisix then
@@ -574,6 +577,11 @@ Please modify "admin_key" in conf/config.yaml .
     for k,v in pairs(yaml_conf.nginx_config) do
         sys_conf[k] = v
     end
+    if yaml_conf.deployment.admin then
+        for k,v in pairs(yaml_conf.deployment.admin) do
+            sys_conf[k] = v
+        end
+    end
     sys_conf["wasm"] = yaml_conf.wasm
 
 
@@ -590,10 +598,6 @@ Please modify "admin_key" in conf/config.yaml .
 
     elseif tonumber(sys_conf["worker_processes"]) == nil then
         sys_conf["worker_processes"] = "auto"
-    end
-
-    if sys_conf.allow_admin and #sys_conf.allow_admin == 0 then
-        sys_conf.allow_admin = nil
     end
 
     local dns_resolver = sys_conf["dns_resolver"]
@@ -618,16 +622,19 @@ Please modify "admin_key" in conf/config.yaml .
                 sys_conf["dns_resolver"][i] = "[" .. r .. "]"
             end
         end
+
+        -- check if the dns_resolver is ipv6 address with zone_id
+        -- Nginx does not support this form
+        if r:find("%%") then
+            stderr:write("unsupported DNS resolver: " .. r ..
+                         ", would ignore this item\n")
+            table_remove(sys_conf["dns_resolver"], i)
+        end
     end
 
     local env_worker_processes = getenv("APISIX_WORKER_PROCESSES")
     if env_worker_processes then
         sys_conf["worker_processes"] = floor(tonumber(env_worker_processes))
-    end
-
-    if sys_conf["http"]["lua_shared_dicts"] then
-        stderr:write("lua_shared_dicts is deprecated, " ..
-                     "use custom_lua_shared_dict instead\n")
     end
 
     local exported_vars = file.get_exported_vars()
@@ -652,6 +659,64 @@ Please modify "admin_key" in conf/config.yaml .
                 table_insert(sys_conf["envs"], name .. "=" .. value)
             end
         end
+    end
+
+    -- inject kubernetes discovery shared dict and environment variable
+    if enabled_discoveries["kubernetes"] then
+
+        if not sys_conf["discovery_shared_dicts"] then
+            sys_conf["discovery_shared_dicts"] = {}
+        end
+
+        local kubernetes_conf = yaml_conf.discovery["kubernetes"]
+
+        local inject_environment = function(conf, envs)
+            local keys = {
+                conf.service.host,
+                conf.service.port,
+            }
+
+            if conf.client.token then
+                table_insert(keys, conf.client.token)
+            end
+
+            if conf.client.token_file then
+                table_insert(keys, conf.client.token_file)
+            end
+
+            for _, key in ipairs(keys) do
+                if #key > 3 then
+                    local first, second = str_byte(key, 1, 2)
+                    if first == str_byte('$') and second == str_byte('{') then
+                        local last = str_byte(key, #key)
+                        if last == str_byte('}') then
+                            envs[str_sub(key, 3, #key - 1)] = ""
+                        end
+                    end
+                end
+            end
+
+        end
+
+        local envs = {}
+        if #kubernetes_conf == 0 then
+            sys_conf["discovery_shared_dicts"]["kubernetes"] = kubernetes_conf.shared_size
+            inject_environment(kubernetes_conf, envs)
+        else
+            for _, item in ipairs(kubernetes_conf) do
+                sys_conf["discovery_shared_dicts"]["kubernetes-" .. item.id] = item.shared_size
+                inject_environment(item, envs)
+            end
+        end
+
+        if not sys_conf["envs"] then
+            sys_conf["envs"] = {}
+        end
+
+        for item in pairs(envs) do
+            table_insert(sys_conf["envs"], item)
+        end
+
     end
 
     -- fix up lua path
@@ -682,28 +747,51 @@ local function start(env, ...)
         util.die("Error: It is forbidden to run APISIX in the /root directory.\n")
     end
 
-    local cmd_logs = "mkdir -p " .. env.apisix_home .. "/logs"
-    util.execute_cmd(cmd_logs)
+    local logs_path = env.apisix_home .. "/logs"
+    if not pl_path.exists(logs_path) then
+        local _, err = pl_path.mkdir(logs_path)
+        if err ~= nil then
+            util.die("failed to mkdir ", logs_path, ", error: ", err)
+        end
+    elseif not pl_path.isdir(logs_path) and not pl_path.islink(logs_path) then
+        util.die(logs_path, " is not directory nor symbol link")
+    end
 
     -- check running
     local pid_path = env.apisix_home .. "/logs/nginx.pid"
     local pid = util.read_file(pid_path)
     pid = tonumber(pid)
     if pid then
-        local lsof_cmd = "lsof -p " .. pid
-        local res, err = util.execute_cmd(lsof_cmd)
-        if not (res and res == "") then
-            if not res then
-                print(err)
-            else
-                print("APISIX is running...")
-            end
+        if pid <= 0 then
+            print("invalid pid")
+            return
+        end
 
+        local signone = 0
+
+        local ok, err, err_no = signal.kill(pid, signone)
+        if ok then
+            print("APISIX is running...")
+            return
+        -- no such process
+        elseif err_no ~= errno.ESRCH then
+            print(err)
             return
         end
 
         print("nginx.pid exists but there's no corresponding process with pid ", pid,
               ", the file will be overwritten")
+    end
+
+    -- start a new APISIX instance
+
+    local conf_server_sock_path = env.apisix_home .. "/conf/config_listen.sock"
+    if pl_path.exists(conf_server_sock_path) then
+        -- remove stale sock (if exists) so that APISIX can start
+        local ok, err = os_remove(conf_server_sock_path)
+        if not ok then
+            util.die("failed to remove stale conf server sock file, error: ", err)
+        end
     end
 
     local parser = argparse()
@@ -717,23 +805,29 @@ local function start(env, ...)
     if customized_yaml then
         profile.apisix_home = env.apisix_home .. "/"
         local local_conf_path = profile:yaml_path("config")
+        local local_conf_path_bak = local_conf_path .. ".bak"
 
-        local err = util.execute_cmd_with_error("mv " .. local_conf_path .. " "
-                                                .. local_conf_path .. ".bak")
-        if #err > 0 then
-            util.die("failed to mv config to backup, error: ", err)
+        local ok, err = os_rename(local_conf_path, local_conf_path_bak)
+        if not ok then
+            util.die("failed to backup config, error: ", err)
         end
-        err = util.execute_cmd_with_error("ln " .. customized_yaml .. " " .. local_conf_path)
-        if #err > 0 then
-            util.execute_cmd("mv " .. local_conf_path .. ".bak " .. local_conf_path)
-            util.die("failed to link customized config, error: ", err)
+        local ok, err1 = lfs.link(customized_yaml, local_conf_path)
+        if not ok then
+            ok, err = os_rename(local_conf_path_bak,  local_conf_path)
+            if not ok then
+                util.die("failed to recover original config file, error: ", err)
+            end
+            util.die("failed to link customized config, error: ", err1)
         end
 
         print("Use customized yaml: ", customized_yaml)
     end
 
     init(env)
-    init_etcd(env, args)
+
+    if env.deployment_role ~= "data_plane" then
+        init_etcd(env, args)
+    end
 
     util.execute_cmd(env.openresty_args)
 end
@@ -741,15 +835,15 @@ end
 
 local function cleanup()
     local local_conf_path = profile:yaml_path("config")
-    local bak_exist = io_open(local_conf_path .. ".bak")
-    if bak_exist then
-        local err = util.execute_cmd_with_error("rm " .. local_conf_path)
-        if #err > 0 then
+    local local_conf_path_bak = local_conf_path .. ".bak"
+    if pl_path.exists(local_conf_path_bak) then
+        local ok, err = os_remove(local_conf_path)
+        if not ok then
             print("failed to remove customized config, error: ", err)
         end
-        err = util.execute_cmd_with_error("mv " .. local_conf_path .. ".bak " .. local_conf_path)
-        if #err > 0 then
-            util.die("failed to mv original config file, error: ", err)
+        ok, err = os_rename(local_conf_path_bak,  local_conf_path)
+        if not ok then
+            util.die("failed to recover original config file, error: ", err)
         end
     end
 end
@@ -758,9 +852,10 @@ end
 local function test(env, backup_ngx_conf)
     -- backup nginx.conf
     local ngx_conf_path = env.apisix_home .. "/conf/nginx.conf"
-    local ngx_conf_exist = util.is_file_exist(ngx_conf_path)
+    local ngx_conf_path_bak = ngx_conf_path .. ".bak"
+    local ngx_conf_exist = pl_path.exists(ngx_conf_path)
     if ngx_conf_exist then
-        local ok, err = os_rename(ngx_conf_path, ngx_conf_path .. ".bak")
+        local ok, err = os_rename(ngx_conf_path, ngx_conf_path_bak)
         if not ok then
             util.die("failed to backup nginx.conf, error: ", err)
         end
@@ -774,7 +869,7 @@ local function test(env, backup_ngx_conf)
 
     -- restore nginx.conf
     if ngx_conf_exist then
-        local ok, err = os_rename(ngx_conf_path .. ".bak", ngx_conf_path)
+        local ok, err = os_rename(ngx_conf_path_bak, ngx_conf_path)
         if not ok then
             util.die("failed to restore original nginx.conf, error: ", err)
         end

@@ -29,11 +29,14 @@ local http_req_call_resp = require("A6.HTTPReqCall.Resp")
 local http_req_call_action = require("A6.HTTPReqCall.Action")
 local http_req_call_stop = require("A6.HTTPReqCall.Stop")
 local http_req_call_rewrite = require("A6.HTTPReqCall.Rewrite")
+local http_resp_call_req = require("A6.HTTPRespCall.Req")
+local http_resp_call_resp = require("A6.HTTPRespCall.Resp")
 local extra_info = require("A6.ExtraInfo.Info")
 local extra_info_req = require("A6.ExtraInfo.Req")
 local extra_info_var = require("A6.ExtraInfo.Var")
 local extra_info_resp = require("A6.ExtraInfo.Resp")
 local extra_info_reqbody = require("A6.ExtraInfo.ReqBody")
+local extra_info_respbody = require("A6.ExtraInfo.RespBody")
 
 local _M = {}
 local builder = flatbuffers.Builder(0)
@@ -50,6 +53,101 @@ local function build_action(action, ty)
     http_req_call_resp.Start(builder)
     http_req_call_resp.AddActionType(builder, ty)
     http_req_call_resp.AddAction(builder, action)
+end
+
+
+local function ask_extra_info(sock, case_extra_info)
+    local data
+    for _, action in ipairs(case_extra_info) do
+        if action.type == "closed" then
+            ngx.exit(-1)
+            return
+        end
+
+        if action.type == "var" then
+            local name = builder:CreateString(action.name)
+            extra_info_var.Start(builder)
+            extra_info_var.AddName(builder, name)
+            local var_req = extra_info_var.End(builder)
+            build_extra_info(var_req, extra_info.Var)
+            local req = extra_info_req.End(builder)
+            builder:Finish(req)
+            data = builder:Output()
+            local ok, err = ext.send(sock, constants.RPC_EXTRA_INFO, data)
+            if not ok then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+            ngx.log(ngx.WARN, "send extra info req successfully")
+
+            local ty, data = ext.receive(sock)
+            if not ty then
+                ngx.log(ngx.ERR, data)
+                return
+            end
+
+            assert(ty == constants.RPC_EXTRA_INFO, ty)
+            local buf = flatbuffers.binaryArray.New(data)
+            local resp = extra_info_resp.GetRootAsResp(buf, 0)
+            local res = resp:ResultAsString()
+            assert(res == action.result, res)
+        end
+
+        if action.type == "reqbody" then
+            extra_info_reqbody.Start(builder)
+            local reqbody_req = extra_info_reqbody.End(builder)
+            build_extra_info(reqbody_req, extra_info.ReqBody)
+            local req = extra_info_req.End(builder)
+            builder:Finish(req)
+            data = builder:Output()
+            local ok, err = ext.send(sock, constants.RPC_EXTRA_INFO, data)
+            if not ok then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+            ngx.log(ngx.WARN, "send extra info req successfully")
+
+            local ty, data = ext.receive(sock)
+            if not ty then
+                ngx.log(ngx.ERR, data)
+                return
+            end
+
+            assert(ty == constants.RPC_EXTRA_INFO, ty)
+            local buf = flatbuffers.binaryArray.New(data)
+            local resp = extra_info_resp.GetRootAsResp(buf, 0)
+            local res = resp:ResultAsString()
+            assert(res == action.result, res)
+        end
+
+        if action.type == "respbody" then
+            extra_info_respbody.Start(builder)
+            local respbody_req = extra_info_respbody.End(builder)
+            build_extra_info(respbody_req, extra_info.RespBody)
+            local req = extra_info_req.End(builder)
+            builder:Finish(req)
+            data = builder:Output()
+            local ok, err = ext.send(sock, constants.RPC_EXTRA_INFO, data)
+            if not ok then
+                ngx.log(ngx.ERR, err)
+                return
+            end
+            ngx.log(ngx.WARN, "send extra info req successfully")
+
+            local ty, data = ext.receive(sock)
+            if not ty then
+                ngx.log(ngx.ERR, data)
+                return
+            end
+
+            assert(ty == constants.RPC_EXTRA_INFO, ty)
+            local buf = flatbuffers.binaryArray.New(data)
+            local resp = extra_info_resp.GetRootAsResp(buf, 0)
+            local res = resp:ResultAsString()
+            assert(res == action.result, res)
+        end
+    end
+
 end
 
 
@@ -176,68 +274,7 @@ function _M.go(case)
         end
 
         if case.extra_info then
-            for _, action in ipairs(case.extra_info) do
-                if action.type == "closed" then
-                    ngx.exit(-1)
-                    return
-                end
-
-                if action.type == "var" then
-                    local name = builder:CreateString(action.name)
-                    extra_info_var.Start(builder)
-                    extra_info_var.AddName(builder, name)
-                    local var_req = extra_info_var.End(builder)
-                    build_extra_info(var_req, extra_info.Var)
-                    local req = extra_info_req.End(builder)
-                    builder:Finish(req)
-                    data = builder:Output()
-                    local ok, err = ext.send(sock, constants.RPC_EXTRA_INFO, data)
-                    if not ok then
-                        ngx.log(ngx.ERR, err)
-                        return
-                    end
-                    ngx.log(ngx.WARN, "send extra info req successfully")
-
-                    local ty, data = ext.receive(sock)
-                    if not ty then
-                        ngx.log(ngx.ERR, data)
-                        return
-                    end
-
-                    assert(ty == constants.RPC_EXTRA_INFO, ty)
-                    local buf = flatbuffers.binaryArray.New(data)
-                    local resp = extra_info_resp.GetRootAsResp(buf, 0)
-                    local res = resp:ResultAsString()
-                    assert(res == action.result, res)
-                end
-
-                if action.type == "reqbody" then
-                    extra_info_reqbody.Start(builder)
-                    local reqbody_req = extra_info_reqbody.End(builder)
-                    build_extra_info(reqbody_req, extra_info.ReqBody)
-                    local req = extra_info_req.End(builder)
-                    builder:Finish(req)
-                    data = builder:Output()
-                    local ok, err = ext.send(sock, constants.RPC_EXTRA_INFO, data)
-                    if not ok then
-                        ngx.log(ngx.ERR, err)
-                        return
-                    end
-                    ngx.log(ngx.WARN, "send extra info req successfully")
-
-                    local ty, data = ext.receive(sock)
-                    if not ty then
-                        ngx.log(ngx.ERR, data)
-                        return
-                    end
-
-                    assert(ty == constants.RPC_EXTRA_INFO, ty)
-                    local buf = flatbuffers.binaryArray.New(data)
-                    local resp = extra_info_resp.GetRootAsResp(buf, 0)
-                    local res = resp:ResultAsString()
-                    assert(res == action.result, res)
-                end
-            end
+            ask_extra_info(sock, case.extra_info)
         end
 
         if case.stop == true then
@@ -251,6 +288,8 @@ function _M.go(case)
             local hdrs = {
                 {"X-Resp", "foo"},
                 {"X-Req", "bar"},
+                {"X-Same", "one"},
+                {"X-Same", "two"},
             }
             local len = #hdrs
             local textEntries = {}
@@ -367,12 +406,190 @@ function _M.go(case)
             local action = http_req_call_rewrite.End(builder)
             build_action(action, http_req_call_action.Rewrite)
 
+        elseif case.rewrite_resp_header == true or case.rewrite_vital_resp_header == true then
+            local hdrs = {
+                {"X-Resp", "foo"},
+                {"X-Req", "bar"},
+                {"Content-Type", "application/json"},
+                {"Content-Encoding", "deflate"},
+            }
+            local len = #hdrs
+            local textEntries = {}
+            for i = 1, len do
+                local name = builder:CreateString(hdrs[i][1])
+                local value = builder:CreateString(hdrs[i][2])
+                text_entry.Start(builder)
+                text_entry.AddName(builder, name)
+                text_entry.AddValue(builder, value)
+                local c = text_entry.End(builder)
+                textEntries[i] = c
+            end
+            http_req_call_rewrite.StartRespHeadersVector(builder, len)
+            for i = len, 1, -1 do
+                builder:PrependUOffsetTRelative(textEntries[i])
+            end
+            local vec = builder:EndVector(len)
+
+            local path = builder:CreateString("/plugin_proxy_rewrite_resp_header")
+
+            http_req_call_rewrite.Start(builder)
+            http_req_call_rewrite.AddRespHeaders(builder, vec)
+            http_req_call_rewrite.AddPath(builder, path)
+            local action = http_req_call_rewrite.End(builder)
+            build_action(action, http_req_call_action.Rewrite)
+
+        elseif case.rewrite_same_resp_header == true then
+            local hdrs = {
+                {"X-Resp", "foo"},
+                {"X-Req", "bar"},
+                {"X-Same", "one"},
+                {"X-Same", "two"},
+            }
+            local len = #hdrs
+            local textEntries = {}
+            for i = 1, len do
+                local name = builder:CreateString(hdrs[i][1])
+                local value = builder:CreateString(hdrs[i][2])
+                text_entry.Start(builder)
+                text_entry.AddName(builder, name)
+                text_entry.AddValue(builder, value)
+                local c = text_entry.End(builder)
+                textEntries[i] = c
+            end
+            http_req_call_rewrite.StartRespHeadersVector(builder, len)
+            for i = len, 1, -1 do
+                builder:PrependUOffsetTRelative(textEntries[i])
+            end
+            local vec = builder:EndVector(len)
+
+            local path = builder:CreateString("/plugin_proxy_rewrite_resp_header")
+
+            http_req_call_rewrite.Start(builder)
+            http_req_call_rewrite.AddRespHeaders(builder, vec)
+            http_req_call_rewrite.AddPath(builder, path)
+            local action = http_req_call_rewrite.End(builder)
+            build_action(action, http_req_call_action.Rewrite)
+
         else
             http_req_call_resp.Start(builder)
         end
 
         local req = http_req_call_resp.End(builder)
         builder:Finish(req)
+        data = builder:Output()
+
+    elseif ty == constants.RPC_HTTP_RESP_CALL  then
+        local buf = flatbuffers.binaryArray.New(data)
+        local call_req = http_resp_call_req.GetRootAsReq(buf, 0)
+        if case.check_input then
+            assert(call_req:Id() == 0)
+            assert(call_req:ConfToken() == 233)
+            assert(call_req:Status() == 200)
+            local len = call_req:HeadersLength()
+
+            local headers = {}
+            for i = 1, len do
+                local entry = call_req:Headers(i)
+                local r = headers[entry:Name()]
+                if r then
+                    headers[entry:Name()] = {r, entry:Value()}
+                else
+                    headers[entry:Name()] = entry:Value() or true
+                end
+            end
+            assert(json.encode(headers), '{"Connection":"close","Content-Length":"12",' ..
+                                    '"Content-Type":"text/plain","Server":"openresty"}')
+            http_resp_call_resp.Start(builder)
+
+        elseif case.modify_body then
+            local len = 3
+            http_resp_call_resp.StartBodyVector(builder, len)
+            builder:PrependByte(string.byte("t"))
+            builder:PrependByte(string.byte("a"))
+            builder:PrependByte(string.byte("c"))
+            local b = builder:EndVector(len)
+
+
+            http_resp_call_resp.Start(builder)
+            http_resp_call_resp.AddBody(builder, b)
+
+        elseif case.modify_header then
+            local len = call_req:HeadersLength()
+
+            local headers = {}
+            for i = 1, len do
+                local entry = call_req:Headers(i)
+                local r = headers[entry:Name()]
+                if r then
+                    headers[entry:Name()] = {r, entry:Value()}
+                else
+                    headers[entry:Name()] = entry:Value() or true
+                end
+            end
+
+            if case.same_header then
+                headers["x-same"] = {"one", "two"}
+            else
+                local runner = headers["x-runner"]
+                if runner and runner == "Go-runner" then
+                    headers["x-runner"] = "Test-Runner"
+                end
+
+                headers["Content-Type"] = "application/json"
+            end
+
+            local i = 1
+            local textEntries = {}
+            for k, v in pairs(headers) do
+                local name = builder:CreateString(k)
+                if type(v) == "table" then
+                    for j = 1, #v do
+                        local value = builder:CreateString(v[j])
+                        text_entry.Start(builder)
+                        text_entry.AddName(builder, name)
+                        text_entry.AddValue(builder, value)
+                        local c = text_entry.End(builder)
+                        textEntries[i] = c
+                        i = i + 1
+                    end
+                else
+                    local value = builder:CreateString(v)
+                    text_entry.Start(builder)
+                    text_entry.AddName(builder, name)
+                    text_entry.AddValue(builder, value)
+                    local c = text_entry.End(builder)
+                    textEntries[i] = c
+                    i = i + 1
+                end
+            end
+
+            len = #textEntries
+            http_resp_call_resp.StartHeadersVector(builder, len)
+            for i = len, 1, -1 do
+                builder:PrependUOffsetTRelative(textEntries[i])
+            end
+            local vec = builder:EndVector(len)
+
+            http_resp_call_resp.Start(builder)
+            http_resp_call_resp.AddHeaders(builder, vec)
+
+        elseif case.modify_status then
+            local status = call_req:Status()
+            if status == 200 then
+                status = 304
+            end
+            http_resp_call_resp.Start(builder)
+            http_resp_call_resp.AddStatus(builder, status)
+
+        elseif case.extra_info then
+            ask_extra_info(sock, case.extra_info)
+            http_resp_call_resp.Start(builder)
+        else
+            http_resp_call_resp.Start(builder)
+        end
+
+        local resp = http_resp_call_resp.End(builder)
+        builder:Finish(resp)
         data = builder:Output()
     end
 

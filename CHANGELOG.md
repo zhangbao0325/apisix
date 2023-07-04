@@ -23,7 +23,28 @@ title: Changelog
 
 ## Table of Contents
 
+- [3.3.0](#330)
+- [3.2.1](#321)
+- [3.2.0](#320)
+- [3.1.0](#310)
+- [3.0.0](#300)
+- [3.0.0-beta](#300-beta)
+- [2.15.3](#2153)
+- [2.15.2](#2152)
+- [2.15.1](#2151)
+- [2.15.0](#2150)
+- [2.14.1](#2141)
+- [2.14.0](#2140)
+- [2.13.3](#2133)
+- [2.13.2](#2132)
+- [2.13.1](#2131)
+- [2.13.0](#2130)
+- [2.12.1](#2121)
+- [2.12.0](#2120)
 - [2.11.0](#2110)
+- [2.10.5](#2105)
+- [2.10.4](#2104)
+- [2.10.3](#2103)
 - [2.10.2](#2102)
 - [2.10.1](#2101)
 - [2.10.0](#2100)
@@ -48,6 +69,568 @@ title: Changelog
 - [0.8.0](#080)
 - [0.7.0](#070)
 - [0.6.0](#060)
+
+## 3.3.0
+
+**The changes marked with :warning: are not backward compatible.**
+
+### Change
+
+- :warning: Change the default router from `radixtree_uri` to `radixtree_host_uri`: [#9047](https://github.com/apache/apisix/pull/9047)
+- :warning: CORS plugin will add `Vary: Origin` header when `allow_origin` is not `*`: [#9010](https://github.com/apache/apisix/pull/9010)
+
+### Core
+
+- :sunrise: Support store route's cert in secrets manager: [#9247](https://github.com/apache/apisix/pull/9247)
+- :sunrise: Support bypassing Admin API Auth by configuration: [#9147](https://github.com/apache/apisix/pull/9147)
+
+### Plugins
+
+- :sunrise: Support header injection for `fault-injection` plugin: [#9039](https://github.com/apache/apisix/pull/9039)
+- :sunrise: Support variable when rewrite header in `proxy-rewrite` plugin: [#9112](https://github.com/apache/apisix/pull/9112)
+- :sunrise: `limit-count` plugin supports `username` and `ssl` for redis policy: [#9185](https://github.com/apache/apisix/pull/9185)
+
+### Bugfixes
+
+- Fix etcd data sync exception: [#8493](https://github.com/apache/apisix/pull/8493)
+- Fix invalidate cache in `core.request.add_header` and fix some calls: [#8824](https://github.com/apache/apisix/pull/8824)
+- Fix the high CPU and memory usage cause by healthcheck impl: [#9015](https://github.com/apache/apisix/pull/9015)
+- Consider using `allow_origins_by_regex` only when it is not `nil`: [#9028](https://github.com/apache/apisix/pull/9028)
+- Check upstream reference in `traffic-split` plugin when delete upstream: [#9044](https://github.com/apache/apisix/pull/9044)
+- Fix failing to connect to etcd at startup: [#9077](https://github.com/apache/apisix/pull/9077)
+- Fix health checker leak for domain nodes: [#9090](https://github.com/apache/apisix/pull/9090)
+- Prevent non `127.0.0.0/24` to access admin api with empty admin_key: [#9146](https://github.com/apache/apisix/pull/9146)
+- Ensure `hold_body_chunk` should use separate buffer for each plugin in case of pollution: [#9266](https://github.com/apache/apisix/pull/9266)
+- Ensure `batch-requests` plugin read trailer headers if existed: [#9289](https://github.com/apache/apisix/pull/9289)
+- Ensure `proxy-rewrite` should set `ngx.var.uri`: [#9309](https://github.com/apache/apisix/pull/9309)
+
+## 3.2.1
+
+**This is an LTS maintenance release and you can see the CHANGELOG in `release/3.2` branch.**
+
+[https://github.com/apache/apisix/blob/release/3.2/CHANGELOG.md#321](https://github.com/apache/apisix/blob/release/3.2/CHANGELOG.md#321)
+
+## 3.2.0
+
+### Change
+
+- Deprecated separate Vault configuration in jwt-auth. Users can use secret to achieve the same function: [#8660](https://github.com/apache/apisix/pull/8660)
+
+### Core
+
+- :sunrise: Support Vault token to configure secret through environment variables: [#8866](https://github.com/apache/apisix/pull/8866)
+- :sunrise: Supports service discovery on stream subsystem:
+     - [#8583](https://github.com/apache/apisix/pull/8583)
+     - [#8593](https://github.com/apache/apisix/pull/8593)
+     - [#8584](https://github.com/apache/apisix/pull/8584)
+     - [#8640](https://github.com/apache/apisix/pull/8640)
+     - [#8633](https://github.com/apache/apisix/pull/8633)
+     - [#8696](https://github.com/apache/apisix/pull/8696)
+     - [#8826](https://github.com/apache/apisix/pull/8826)
+
+### Plugins
+
+- :sunrise: Add RESTful to graphQL conversion plugin: [#8959](https://github.com/apache/apisix/pull/8959)
+- :sunrise: Supports setting the log format on each log plugin:
+     - [#8806](https://github.com/apache/apisix/pull/8806)
+     - [#8643](https://github.com/apache/apisix/pull/8643)
+- :sunrise: Add request body/response body conversion plugin: [#8766](https://github.com/apache/apisix/pull/8766)
+- :sunrise: Support sending error logs to Kafka: [#8693](https://github.com/apache/apisix/pull/8693)
+- :sunrise: limit-count plugin supports X-RateLimit-Reset: [#8578](https://github.com/apache/apisix/pull/8578)
+- :sunrise: limit-count plugin supports setting TLS to access Redis cluster: [#8558](https://github.com/apache/apisix/pull/8558)
+- :sunrise: consumer-restriction plugin supports permission control via consumer_group_id: [#8567](https://github.com/apache/apisix/pull/8567)
+
+### Bugfixes
+
+- Fix mTLS protection when the host and SNI mismatch: [#8967](https://github.com/apache/apisix/pull/8967)
+- The proxy-rewrite plugin should escape URI parameter parts if they do not come from user config: [#8888](https://github.com/apache/apisix/pull/8888)
+- Admin API PATCH operation should return 200 status code after success: [#8855](https://github.com/apache/apisix/pull/8855)
+- Under certain conditions, the reload after etcd synchronization failure does not take effect: [#8736](https://github.com/apache/apisix/pull/8736)
+- Fix the problem that the nodes found by the Consul service discovery are incomplete: [#8651](https://github.com/apache/apisix/pull/8651)
+- Fix grpc-transcode plugin's conversion of Map data: [#8731](https://github.com/apache/apisix/pull/8731)
+- External plugins should be able to set the content-type response header: [#8588](https://github.com/apache/apisix/pull/8588)
+- When hotloading plugins, redundant timers may be left behind if the request-id plugin initializes the snowflake generator incorrectly: [#8556](https://github.com/apache/apisix/pull/8556)
+- Close previous proto synchronizer for grpc-transcode when hotloading plugins: [#8557](https://github.com/apache/apisix/pull/8557)
+
+## 3.1.0
+
+### Core
+
+- :sunrise: Support for etcd configuration synchronization via gRPC:
+    - [#8485](https://github.com/apache/apisix/pull/8485)
+    - [#8450](https://github.com/apache/apisix/pull/8450)
+    - [#8411](https://github.com/apache/apisix/pull/8411)
+- :sunrise: Support for configuring encrypted fields in plugins:
+    - [#8487](https://github.com/apache/apisix/pull/8487)
+    - [#8403](https://github.com/apache/apisix/pull/8403)
+- :sunrise: Support for placing partial fields in Vault or environment variable using secret resources:
+    - [#8448](https://github.com/apache/apisix/pull/8448)
+    - [#8421](https://github.com/apache/apisix/pull/8421)
+    - [#8412](https://github.com/apache/apisix/pull/8412)
+    - [#8394](https://github.com/apache/apisix/pull/8394)
+    - [#8390](https://github.com/apache/apisix/pull/8390)
+- :sunrise: Allows upstream configuration in the stream subsystem as a domain name: [#8500](https://github.com/apache/apisix/pull/8500)
+- :sunrise: Support Consul service discovery: [#8380](https://github.com/apache/apisix/pull/8380)
+
+### Plugin
+
+- :sunrise: Optimize resource usage for prometheus collection: [#8434](https://github.com/apache/apisix/pull/8434)
+- :sunrise: Add inspect plugin for easy debugging: [#8400](https://github.com/apache/apisix/pull/8400)
+- :sunrise: jwt-auth plugin supports parameters to hide authentication token from upstream : [#8206](https://github.com/apache/apisix/pull/8206)
+- :sunrise: proxy-rewrite plugin supports adding new request headers without overwriting existing request headers with the same name: [#8336](https://github.com/apache/apisix/pull/8336)
+- :sunrise: grpc-transcode plugin supports setting the grpc-status-details-bin response header into the response body: [#7639](https://github.com/apache/apisix/pull/7639)
+- :sunrise: proxy-mirror plugin supports setting the prefix: [#8261](https://github.com/apache/apisix/pull/8261)
+
+### Bugfix
+
+- Fix the problem that the plug-in configured under service object cannot take effect in time under some circumstances: [#8482](https://github.com/apache/apisix/pull/8482)
+- Fix an occasional 502 problem when http and grpc share the same upstream connection due to connection pool reuse: [#8364](https://github.com/apache/apisix/pull/8364)
+- file-logger should avoid buffer-induced log truncation when writing logs: [#7884](https://github.com/apache/apisix/pull/7884)
+- max_kept parameter of log-rotate plugin should take effect on compressed files: [#8366](https://github.com/apache/apisix/pull/8366)
+- Fix userinfo not being set when use_jwks is true in the openid-connect plugin: [#8347](https://github.com/apache/apisix/pull/8347)
+- Fix an issue where x-forwarded-host cannot be changed in the proxy-rewrite plugin: [#8200](https://github.com/apache/apisix/pull/8200)
+- Fix a bug where disabling the v3 admin API resulted in missing response bodies under certain circumstances: [#8349](https://github.com/apache/apisix/pull/8349)
+- In zipkin plugin, pass trace ID even if there is a rejected sampling decision: [#8099](https://github.com/apache/apisix/pull/8099)
+- Fix `_meta.filter` in plugin configuration not working with variables assigned after upstream response and custom variables in APISIX.
+    - [#8162](https://github.com/apache/apisix/pull/8162)
+    - [#8256](https://github.com/apache/apisix/pull/8256)
+
+## 3.0.0
+
+### Change
+
+- `enable_cpu_affinity` is disabled by default to avoid this configuration affecting the behavior of APSISIX deployed in the container: [#8074](https://github.com/apache/apisix/pull/8074)
+
+### Core
+
+- :sunrise: Added Consumer Group entity to manage multiple consumers: [#7980](https://github.com/apache/apisix/pull/7980)
+- :sunrise: Supports configuring the order in which DNS resolves domain name types: [#7935](https://github.com/apache/apisix/pull/7935)
+- :sunrise: Support configuring multiple `key_encrypt_salt` for rotation: [#7925](https://github.com/apache/apisix/pull/7925)
+
+### Plugin
+
+- :sunrise: Added ai plugin to dynamically optimize the execution path of APISIX according to the scene:
+    - [#8102](https://github.com/apache/apisix/pull/8102)
+    - [#8113](https://github.com/apache/apisix/pull/8113)
+    - [#8120](https://github.com/apache/apisix/pull/8120)
+    - [#8128](https://github.com/apache/apisix/pull/8128)
+    - [#8130](https://github.com/apache/apisix/pull/8130)
+    - [#8149](https://github.com/apache/apisix/pull/8149)
+    - [#8157](https://github.com/apache/apisix/pull/8157)
+- :sunrise: Support `session_secret` in openid-connect plugin to resolve the inconsistency of `session_secret` among multiple workers: [#8068](https://github.com/apache/apisix/pull/8068)
+- :sunrise: Support sasl config in kafka-logger plugin: [#8050](https://github.com/apache/apisix/pull/8050)
+- :sunrise: Support set resolve domain in proxy-mirror plugin: [#7861](https://github.com/apache/apisix/pull/7861)
+- :sunrise: Support `brokers` property in kafka-logger plugin, which supports different broker to set the same host: [#7999](https://github.com/apache/apisix/pull/7999)
+- :sunrise: Support get response body in ext-plugin-post-resp: [#7947](https://github.com/apache/apisix/pull/7947)
+- :sunrise: Added cas-auth plugin to support CAS authentication: [#7932](https://github.com/apache/apisix/pull/7932)
+
+### Bugfix
+
+- Conditional expressions of workflow plugin should support operators: [#8121](https://github.com/apache/apisix/pull/8121)
+- Fix loading problem of batch processor plugin when prometheus plugin is disabled: [#8079](https://github.com/apache/apisix/pull/8079)
+- When APISIX starts, delete the old conf server sock file if it exists: [#8022](https://github.com/apache/apisix/pull/8022)
+- Disable core.grpc when gRPC-client-nginx-module module is not compiled: [#8007](https://github.com/apache/apisix/pull/8007)
+
+## 3.0.0-beta
+
+Here we use 2.99.0 as the version number in the source code instead of the code name
+`3.0.0-beta` for two reasons:
+
+1. avoid unexpected errors when some programs try to compare the
+version, as `3.0.0-beta` contains `3.0.0` and is longer than it.
+2. some package system might not allow package which has a suffix
+after the version number.
+
+### Change
+
+#### Moves the config_center, etcd and Admin API configuration to the deployment
+
+We've adjusted the configuration in the static configuration file, so you need to update the configuration in `config.yaml` as well:
+
+- The `config_center` function is now implemented by `config_provider` under `deployment`: [#7901](https://github.com/apache/apisix/pull/7901)
+- The `etcd` field is moved to `deployment`: [#7860](https://github.com/apache/apisix/pull/7860)
+- The following Admin API configuration is moved to the `admin` field under `deployment`: [#7823](https://github.com/apache/apisix/pull/7823)
+    - admin_key
+    - enable_admin_cors
+    - allow_admin
+    - admin_listen
+    - https_admin
+    - admin_api_mtls
+    - admin_api_version
+
+You can refer to the latest `config-default.yaml` for details.
+
+#### Removing multiple deprecated configurations
+
+With the new 3.0 release, we took the opportunity to clean out many configurations that were previously marked as deprecated.
+
+In the static configuration, we removed several fields as follows:
+
+- Removed `enable_http2` and `listen_port` from `apisix.ssl`: [#7717](https://github.com/apache/apisix/pull/7717)
+- Removed `apisix.port_admin`: [#7716](https://github.com/apache/apisix/pull/7716)
+- Removed `etcd.health_check_retry`: [#7676](https://github.com/apache/apisix/pull/7676)
+- Removed `nginx_config.http.lua_shared_dicts`: [#7677](https://github.com/apache/apisix/pull/7677)
+- Removed `apisix.real_ip_header`: [#7696](https://github.com/apache/apisix/pull/7696)
+
+In the dynamic configuration, we made the following adjustments:
+
+- Moved `disable` of the plugin configuration under `_meta`: [#7707](https://github.com/apache/apisix/pull/7707)
+- Removed `service_protocol` from the Route: [#7701](https://github.com/apache/apisix/pull/7701)
+
+There are also specific plugin level changes:
+
+- Removed `audience` field from authz-keycloak: [#7683](https://github.com/apache/apisix/pull/7683)
+- Removed `upstream` field from mqtt-proxy: [#7694](https://github.com/apache/apisix/pull/7694)
+- tcp-related configuration placed under the `tcp` field in error-log-logger: [#7700](https://github.com/apache/apisix/pull/7700)
+- Removed `max_retry_times` and `retry_interval` fields from syslog: [#7699](https://github.com/apache/apisix/pull/7699)
+- The `scheme` field has been removed from proxy-rewrite: [#7695](https://github.com/apache/apisix/pull/7695)
+
+#### New Admin API response format
+
+We have adjusted the response format of the Admin API in several PRs as follows:
+
+- [#7630](https://github.com/apache/apisix/pull/7630)
+- [#7622](https://github.com/apache/apisix/pull/7622)
+
+The new response format is shown below:
+
+Returns a single configuration:
+
+```json
+{
+  "modifiedIndex": 2685183,
+  "value": {
+    "id": "1",
+    ...
+  },
+  "key": "/apisix/routes/1",
+  "createdIndex": 2684956
+}
+```
+
+Returns multiple configurations:
+
+```json
+{
+  "list": [
+    {
+      "modifiedIndex": 2685183,
+      "value": {
+        "id": "1",
+        ...
+      },
+      "key": "/apisix/routes/1",
+      "createdIndex": 2684956
+    },
+    {
+      "modifiedIndex": 2685163,
+      "value": {
+        "id": "2",
+        ...
+      },
+      "key": "/apisix/routes/2",
+      "createdIndex": 2685163
+    }
+  ],
+  "total": 2
+}
+```
+
+#### Other
+
+- Port of Admin API changed to 9180: [#7806](https://github.com/apache/apisix/pull/7806)
+- We only support OpenResty 1.19.3.2 and above: [#7625](https://github.com/apache/apisix/pull/7625)
+- Adjusted the priority of the Plugin Config object so that the priority of a plugin configuration with the same name changes from Consumer > Plugin Config > Route > Service to Consumer > Route > Plugin Config > Service: [#7614](https://github. com/apache/apisix/pull/7614)
+
+### Core
+
+- Integrating grpc-client-nginx-module to APISIX: [#7917](https://github.com/apache/apisix/pull/7917)
+- k8s service discovery support for configuring multiple clusters: [#7895](https://github.com/apache/apisix/pull/7895)
+
+### Plugin
+
+- Support for injecting header with specified prefix in opentelemetry plugin: [#7822](https://github.com/apache/apisix/pull/7822)
+- Added openfunction plugin: [#7634](https://github.com/apache/apisix/pull/7634)
+- Added elasticsearch-logger plugin: [#7643](https://github.com/apache/apisix/pull/7643)
+- response-rewrite plugin supports adding response bodies: [#7794](https://github.com/apache/apisix/pull/7794)
+- log-rorate supports specifying the maximum size to cut logs: [#7749](https://github.com/apache/apisix/pull/7749)
+- Added workflow plug-in.
+    - [#7760](https://github.com/apache/apisix/pull/7760)
+    - [#7771](https://github.com/apache/apisix/pull/7771)
+- Added Tencent Cloud Log Service plugin: [#7593](https://github.com/apache/apisix/pull/7593)
+- jwt-auth supports ES256 algorithm: [#7627](https://github.com/apache/apisix/pull/7627)
+- ldap-auth internal implementation, switching from lualdap to lua-resty-ldap: [#7590](https://github.com/apache/apisix/pull/7590)
+- http request metrics within the prometheus plugin supports setting additional labels via variables: [#7549](https://github.com/apache/apisix/pull/7549)
+- The clickhouse-logger plugin supports specifying multiple clickhouse endpoints: [#7517](https://github.com/apache/apisix/pull/7517)
+
+### Bugfix
+
+- gRPC proxy sets :authority request header to configured upstream Host: [#7939](https://github.com/apache/apisix/pull/7939)
+- response-rewrite writing to an empty body may cause AIPSIX to fail to respond to the request: [#7836](https://github.com/apache/apisix/pull/7836)
+- Fix the problem that when using Plugin Config and Consumer at the same time, there is a certain probability that the plugin configuration is not updated: [#7965](https://github.com/apache/apisix/pull/7965)
+- Only reopen log files once when log cutting: [#7869](https://github.com/apache/apisix/pull/7869)
+- Passive health checks should not be enabled by default: [#7850](https://github.com/apache/apisix/pull/7850)
+- The zipkin plugin should pass trace IDs upstream even if it does not sample: [#7833](https://github.com/apache/apisix/pull/7833)
+- Correction of opentelemetry span kind to server: [#7830](https://github.com/apache/apisix/pull/7830)
+- in limit-count plugin, different routes with the same configuration should not share the same counter: [#7750](https://github.com/apache/apisix/pull/7750)
+- Fix occasional exceptions thrown when removing clean_handler: [#7648](https://github.com/apache/apisix/pull/7648)
+- Allow direct use of IPv6 literals when configuring upstream nodes: [#7594](https://github.com/apache/apisix/pull/7594)
+- The wolf-rbac plugin adjusts the way it responds to errors:
+    - [#7561](https://github.com/apache/apisix/pull/7561)
+    - [#7497](https://github.com/apache/apisix/pull/7497)
+- the phases after proxy didn't run when 500 error happens before proxy: [#7703](https://github.com/apache/apisix/pull/7703)
+- avoid error when multiple plugins associated with consumer and have rewrite phase: [#7531](https://github.com/apache/apisix/pull/7531)
+- upgrade lua-resty-etcd to 1.8.3 which fixes various issues: [#7565](https://github.com/apache/apisix/pull/7565)
+
+## 2.15.3
+
+**This is an LTS maintenance release and you can see the CHANGELOG in `release/2.15` branch.**
+
+[https://github.com/apache/apisix/blob/release/2.15/CHANGELOG.md#2153](https://github.com/apache/apisix/blob/release/2.15/CHANGELOG.md#2153)
+
+## 2.15.2
+
+**This is an LTS maintenance release and you can see the CHANGELOG in `release/2.15` branch.**
+
+[https://github.com/apache/apisix/blob/release/2.15/CHANGELOG.md#2152](https://github.com/apache/apisix/blob/release/2.15/CHANGELOG.md#2152)
+
+## 2.15.1
+
+**This is an LTS maintenance release and you can see the CHANGELOG in `release/2.15` branch.**
+
+[https://github.com/apache/apisix/blob/release/2.15/CHANGELOG.md#2151](https://github.com/apache/apisix/blob/release/2.15/CHANGELOG.md#2151)
+
+## 2.15.0
+
+### Change
+
+- We now map the grpc error code OUT_OF_RANGE to http code 400 in grpc-transcode plugin: [#7419](https://github.com/apache/apisix/pull/7419)
+- Rename health_check_retry configuration in etcd section of `config-default.yaml` to startup_retry: [#7304](https://github.com/apache/apisix/pull/7304)
+- Remove `upstream.enable_websocket` which is deprecated since 2020: [#7222](https://github.com/apache/apisix/pull/7222)
+
+### Core
+
+- Support running plugins conditionally: [#7453](https://github.com/apache/apisix/pull/7453)
+- Allow users to specify plugin execution priority: [#7273](https://github.com/apache/apisix/pull/7273)
+- Support getting upstream certificate from ssl object: [#7221](https://github.com/apache/apisix/pull/7221)
+- Allow customizing error response in the plugin: [#7128](https://github.com/apache/apisix/pull/7128)
+- Add metrics to xRPC Redis proxy: [#7183](https://github.com/apache/apisix/pull/7183)
+- Introduce deployment role to simplify the deployment of APISIX:
+    - [#7405](https://github.com/apache/apisix/pull/7405)
+    - [#7417](https://github.com/apache/apisix/pull/7417)
+    - [#7392](https://github.com/apache/apisix/pull/7392)
+    - [#7365](https://github.com/apache/apisix/pull/7365)
+    - [#7249](https://github.com/apache/apisix/pull/7249)
+
+### Plugin
+
+- Add ngx.shared.dict statistic in promethues plugin: [#7412](https://github.com/apache/apisix/pull/7412)
+- Allow using unescaped raw URL in proxy-rewrite plugin: [#7401](https://github.com/apache/apisix/pull/7401)
+- Add PKCE support to the openid-connect plugin: [#7370](https://github.com/apache/apisix/pull/7370)
+- Support custom log format in sls-logger plugin: [#7328](https://github.com/apache/apisix/pull/7328)
+- Export some params for kafka-client in kafka-logger plugin: [#7266](https://github.com/apache/apisix/pull/7266)
+- Add support for capturing OIDC refresh tokens in openid-connect plugin: [#7220](https://github.com/apache/apisix/pull/7220)
+- Add prometheus plugin in stream subsystem: [#7174](https://github.com/apache/apisix/pull/7174)
+
+### Bugfix
+
+- clear remain state from the latest try before retrying in Kubernetes discovery: [#7506](https://github.com/apache/apisix/pull/7506)
+- the query string was repeated twice when enabling both http_to_https and append_query_string in the redirect plugin: [#7433](https://github.com/apache/apisix/pull/7433)
+- don't send empty Authorization header by default in http-logger: [#7444](https://github.com/apache/apisix/pull/7444)
+- ensure both `group` and `disable` configurations can be used in limit-count: [#7384](https://github.com/apache/apisix/pull/7384)
+- adjust the execution priority of request-id so the tracing plugins can use the request id: [#7281](https://github.com/apache/apisix/pull/7281)
+- correct the transcode of repeated Message in grpc-transcode: [#7231](https://github.com/apache/apisix/pull/7231)
+- var missing in proxy-cache cache key should be ignored: [#7168](https://github.com/apache/apisix/pull/7168)
+- reduce memory usage when abnormal weights are given in chash: [#7103](https://github.com/apache/apisix/pull/7103)
+- cache should be bypassed when the method mismatch in proxy-cache: [#7111](https://github.com/apache/apisix/pull/7111)
+- Upstream keepalive should consider TLS param:
+    - [#7054](https://github.com/apache/apisix/pull/7054)
+    - [#7466](https://github.com/apache/apisix/pull/7466)
+- The redirect plugin sets a correct port during redirecting HTTP to HTTPS:
+    - [#7065](https://github.com/apache/apisix/pull/7065)
+
+## 2.14.1
+
+### Bugfix
+
+- The "unix:" in the `real_ip_from` configuration should not break the batch-requests plugin: [#7106](https://github.com/apache/apisix/pull/7106)
+
+## 2.14.0
+
+### Change
+
+- To adapt the change of OpenTelemetry spec, the default port of OTLP/HTTP is changed to 4318: [#7007](https://github.com/apache/apisix/pull/7007)
+
+### Core
+
+- Introduce an experimental feature to allow subscribing Kafka message via APISIX. This feature is based on the pubsub framework running above websocket:
+    - [#7028](https://github.com/apache/apisix/pull/7028)
+    - [#7032](https://github.com/apache/apisix/pull/7032)
+- Introduce an experimental framework called xRPC to manage non-HTTP L7 traffic:
+    - [#6885](https://github.com/apache/apisix/pull/6885)
+    - [#6901](https://github.com/apache/apisix/pull/6901)
+    - [#6919](https://github.com/apache/apisix/pull/6919)
+    - [#6960](https://github.com/apache/apisix/pull/6960)
+    - [#6965](https://github.com/apache/apisix/pull/6965)
+    - [#7040](https://github.com/apache/apisix/pull/7040)
+- Now we support adding delay according to the command & key during proxying Redis traffic, which is built above xRPC:
+    - [#6999](https://github.com/apache/apisix/pull/6999)
+- Introduce an experimental support to configure APISIX via xDS:
+    - [#6614](https://github.com/apache/apisix/pull/6614)
+    - [#6759](https://github.com/apache/apisix/pull/6759)
+- Add `normalize_uri_like_servlet` option to normalize uri like servlet: [#6984](https://github.com/apache/apisix/pull/6984)
+- Zookeeper service discovery via apisix-seed: [#6751](https://github.com/apache/apisix/pull/6751)
+
+### Plugin
+
+- The real-ip plugin supports recursive IP search like `real_ip_recursive`: [#6988](https://github.com/apache/apisix/pull/6988)
+- The api-breaker plugin allows configuring response: [#6949](https://github.com/apache/apisix/pull/6949)
+- The response-rewrite plugin supports body filters: [#6750](https://github.com/apache/apisix/pull/6750)
+- The request-id plugin adds nanoid algorithm to generate ID: [#6779](https://github.com/apache/apisix/pull/6779)
+- The file-logger plugin can cache & reopen file handler: [#6721](https://github.com/apache/apisix/pull/6721)
+- Add casdoor plugin: [#6382](https://github.com/apache/apisix/pull/6382)
+- The authz-keycloak plugin supports password grant: [#6586](https://github.com/apache/apisix/pull/6586)
+
+### Bugfix
+
+- Upstream keepalive should consider TLS param: [#7054](https://github.com/apache/apisix/pull/7054)
+- Do not expose internal error message to the client:
+    - [#6982](https://github.com/apache/apisix/pull/6982)
+    - [#6859](https://github.com/apache/apisix/pull/6859)
+    - [#6854](https://github.com/apache/apisix/pull/6854)
+    - [#6853](https://github.com/apache/apisix/pull/6853)
+    - [#6846](https://github.com/apache/apisix/pull/6846)
+- DNS supports SRV record with port 0: [#6739](https://github.com/apache/apisix/pull/6739)
+- client mTLS was ignored sometimes in TLS session reuse: [#6906](https://github.com/apache/apisix/pull/6906)
+- The grpc-web plugin doesn't override Access-Control-Allow-Origin header in response: [#6842](https://github.com/apache/apisix/pull/6842)
+- The syslog plugin's default timeout is corrected: [#6807](https://github.com/apache/apisix/pull/6807)
+- The authz-keycloak plugin's `access_denied_redirect_uri` was bypassed sometimes: [#6794](https://github.com/apache/apisix/pull/6794)
+- Handle `USR2` signal properly: [#6758](https://github.com/apache/apisix/pull/6758)
+- The redirect plugin set a correct port during redirecting HTTP to HTTPS:
+    - [#7065](https://github.com/apache/apisix/pull/7065)
+    - [#6686](https://github.com/apache/apisix/pull/6686)
+- Admin API rejects unknown stream plugin: [#6813](https://github.com/apache/apisix/pull/6813)
+
+## 2.13.3
+
+**This is an LTS maintenance release and you can see the CHANGELOG in `release/2.13` branch.**
+
+[https://github.com/apache/apisix/blob/release/2.13/CHANGELOG.md#2133](https://github.com/apache/apisix/blob/release/2.13/CHANGELOG.md#2133)
+
+## 2.13.2
+
+**This is an LTS maintenance release and you can see the CHANGELOG in `release/2.13` branch.**
+
+[https://github.com/apache/apisix/blob/release/2.13/CHANGELOG.md#2132](https://github.com/apache/apisix/blob/release/2.13/CHANGELOG.md#2132)
+
+## 2.13.1
+
+**This is an LTS maintenance release and you can see the CHANGELOG in `release/2.13` branch.**
+
+[https://github.com/apache/apisix/blob/release/2.13/CHANGELOG.md#2131](https://github.com/apache/apisix/blob/release/2.13/CHANGELOG.md#2131)
+
+## 2.13.0
+
+### Change
+
+- change(syslog): correct the configuration [#6551](https://github.com/apache/apisix/pull/6551)
+- change(server-info): use a new approach(keepalive) to report DP info [#6202](https://github.com/apache/apisix/pull/6202)
+- change(admin): empty nodes should be encoded as array [#6384](https://github.com/apache/apisix/pull/6384)
+- change(prometheus): replace wrong apisix_nginx_http_current_connections{state="total"} label [#6327](https://github.com/apache/apisix/pull/6327)
+- change: don't expose public API by default & remove plugin interceptor [#6196](https://github.com/apache/apisix/pull/6196)
+
+### Core
+
+- :sunrise: feat: add delayed_body_filter phase [#6605](https://github.com/apache/apisix/pull/6605)
+- :sunrise: feat: support for reading environment variables from yaml configuration files [#6505](https://github.com/apache/apisix/pull/6505)
+- :sunrise: feat: rerun rewrite phase for newly added plugins in consumer [#6502](https://github.com/apache/apisix/pull/6502)
+- :sunrise: feat: add config to control write all status to x-upsream-apisix-status [#6392](https://github.com/apache/apisix/pull/6392)
+- :sunrise: feat: add kubernetes discovery module [#4880](https://github.com/apache/apisix/pull/4880)
+- :sunrise: feat(graphql): support http get and post json request [#6343](https://github.com/apache/apisix/pull/6343)
+
+### Plugin
+
+- :sunrise: feat: jwt-auth support custom parameters [#6561](https://github.com/apache/apisix/pull/6561)
+- :sunrise: feat: set cors allow origins by plugin metadata [#6546](https://github.com/apache/apisix/pull/6546)
+- :sunrise: feat: support post_logout_redirect_uri config in openid-connect plugin [#6455](https://github.com/apache/apisix/pull/6455)
+- :sunrise: feat: mocking plugin [#5940](https://github.com/apache/apisix/pull/5940)
+- :sunrise: feat(error-log-logger): add clickhouse for error-log-logger [#6256](https://github.com/apache/apisix/pull/6256)
+- :sunrise: feat: clickhouse logger [#6215](https://github.com/apache/apisix/pull/6215)
+- :sunrise: feat(grpc-transcode): support .pb file [#6264](https://github.com/apache/apisix/pull/6264)
+- :sunrise: feat: development of Loggly logging plugin [#6113](https://github.com/apache/apisix/pull/6113)
+- :sunrise: feat: add opentelemetry plugin [#6119](https://github.com/apache/apisix/pull/6119)
+- :sunrise: feat: add public api plugin [#6145](https://github.com/apache/apisix/pull/6145)
+- :sunrise: feat: add CSRF plugin [#5727](https://github.com/apache/apisix/pull/5727)
+
+### Bugfix
+
+- fix(skywalking,opentelemetry): trace request rejected by auth [#6617](https://github.com/apache/apisix/pull/6617)
+- fix(log-rotate): should rotate logs strictly hourly(or minutely) [#6521](https://github.com/apache/apisix/pull/6521)
+- fix: deepcopy doesn't copy the metatable [#6623](https://github.com/apache/apisix/pull/6623)
+- fix(request-validate): handle duplicate key in JSON [#6625](https://github.com/apache/apisix/pull/6625)
+- fix(prometheus): conflict between global rule and route configure [#6579](https://github.com/apache/apisix/pull/6579)
+- fix(proxy-rewrite): when conf.headers are missing,conf.method can make effect [#6300](https://github.com/apache/apisix/pull/6300)
+- fix(traffic-split): failed to match rule when the first rule failed [#6292](https://github.com/apache/apisix/pull/6292)
+- fix(config_etcd): skip resync_delay while etcd watch timeout [#6259](https://github.com/apache/apisix/pull/6259)
+- fix(proto): avoid sharing state [#6199](https://github.com/apache/apisix/pull/6199)
+- fix(limit-count): keep the counter if the plugin conf is the same [#6151](https://github.com/apache/apisix/pull/6151)
+- fix(admin): correct the count field of plugin-metadata/global-rule [#6155](https://github.com/apache/apisix/pull/6155)
+- fix: add missing labels after merging route and service [#6177](https://github.com/apache/apisix/pull/6177)
+
+## 2.12.1
+
+**This is an LTS maintenance release and you can see the CHANGELOG in `release/2.12` branch.**
+
+[https://github.com/apache/apisix/blob/release/2.12/CHANGELOG.md#2121](https://github.com/apache/apisix/blob/release/2.12/CHANGELOG.md#2121)
+
+## 2.12.0
+
+### Change
+
+- change(serverless): rename "balancer" phase to "before_proxy" [#5992](https://github.com/apache/apisix/pull/5992)
+- change: don't promise to support Tengine [#5961](https://github.com/apache/apisix/pull/5961)
+- change: enable HTTP when stream proxy is set and enable_admin is true [#5867](https://github.com/apache/apisix/pull/5867)
+
+### Core
+
+- :sunrise: feat(L4): support TLS over TCP upstream [#6030](https://github.com/apache/apisix/pull/6030)
+- :sunrise: feat: support registering custom variable [#5941](https://github.com/apache/apisix/pull/5941)
+- :sunrise: feat(vault): vault lua module, integration with jwt-auth authentication plugin [#5745](https://github.com/apache/apisix/pull/5745)
+- :sunrise: feat: enable L4 stream logging [#5768](https://github.com/apache/apisix/pull/5768)
+- :sunrise: feat: add http_server_location_configuration_snippet configuration [#5740](https://github.com/apache/apisix/pull/5740)
+- :sunrise: feat: support resolve default value when environment not set [#5675](https://github.com/apache/apisix/pull/5675)
+- :sunrise: feat(wasm): run in http header_filter [#5544](https://github.com/apache/apisix/pull/5544)
+
+### Plugin
+
+- :sunrise: feat: support hide the authentication header in basic-auth with  a config [#6039](https://github.com/apache/apisix/pull/6039)
+- :sunrise: feat: set proxy_request_buffering dynamically [#6075](https://github.com/apache/apisix/pull/6075)
+- :sunrise: feat(mqtt): balance by client id [#6079](https://github.com/apache/apisix/pull/6079)
+- :sunrise: feat: add forward-auth plugin [#6037](https://github.com/apache/apisix/pull/6037)
+- :sunrise: feat(grpc-web): support gRPC-Web Proxy [#5964](https://github.com/apache/apisix/pull/5964)
+- :sunrise: feat(limit-count): add constant key type [#5984](https://github.com/apache/apisix/pull/5984)
+- :sunrise: feat(limit-count): allow sharing counter [#5881](https://github.com/apache/apisix/pull/5881)
+- :sunrise: feat(splunk): support splunk hec logging plugin [#5819](https://github.com/apache/apisix/pull/5819)
+- :sunrise: feat: basic support OPA plugin [#5734](https://github.com/apache/apisix/pull/5734)
+- :sunrise: feat: rocketmq logger [#5653](https://github.com/apache/apisix/pull/5653)
+- :sunrise: feat(mqtt-proxy): support using route's upstream [#5666](https://github.com/apache/apisix/pull/5666)
+- :sunrise: feat(ext-plugin): support to get request body [#5600](https://github.com/apache/apisix/pull/5600)
+- :sunrise: feat(plugins): aws lambda serverless [#5594](https://github.com/apache/apisix/pull/5594)
+- :sunrise: feat(http/kafka-logger): support to log response body [#5550](https://github.com/apache/apisix/pull/5550)
+- :sunrise: feat: Apache OpenWhisk plugin [#5518](https://github.com/apache/apisix/pull/5518)
+- :sunrise: feat(plugin): support google cloud logging service [#5538](https://github.com/apache/apisix/pull/5538)
+
+### Bugfix
+
+- fix: the prometheus labels are inconsistent when error-log-logger is enabled [#6055](https://github.com/apache/apisix/pull/6055)
+- fix(ipv6): allow disabling IPv6 resolve [#6023](https://github.com/apache/apisix/pull/6023)
+- fix(mqtt): handle properties for MQTT 5 [#5916](https://github.com/apache/apisix/pull/5916)
+- fix(sls-logger): unable to get millisecond part of the timestamp [#5820](https://github.com/apache/apisix/pull/5820)
+- fix(mqtt-proxy): client id can be empty [#5816](https://github.com/apache/apisix/pull/5816)
+- fix(ext-plugin): don't use stale key [#5782](https://github.com/apache/apisix/pull/5782)
+- fix(log-rotate): race between reopen log & compression [#5715](https://github.com/apache/apisix/pull/5715)
+- fix(batch-processor): we didn't free stale object actually [#5700](https://github.com/apache/apisix/pull/5700)
+- fix: data pollution after passive health check is changed [#5589](https://github.com/apache/apisix/pull/5589)
 
 ## 2.11.0
 
@@ -79,34 +662,35 @@ title: Changelog
 - :sunrise: feat(ext-plugin): avoid sending conf request more times [#5183](https://github.com/apache/apisix/pull/5183)
 - :sunrise: feat: Add ldap-auth plugin [#3894](https://github.com/apache/apisix/pull/3894)
 
+## 2.10.5
+
+**This is an LTS maintenance release and you can see the CHANGELOG in `release/2.10` branch.**
+
+[https://github.com/apache/apisix/blob/release/2.10/CHANGELOG.md#2105](https://github.com/apache/apisix/blob/release/2.10/CHANGELOG.md#2105)
+
+## 2.10.4
+
+**This is an LTS maintenance release and you can see the CHANGELOG in `release/2.10` branch.**
+
+[https://github.com/apache/apisix/blob/release/2.10/CHANGELOG.md#2104](https://github.com/apache/apisix/blob/release/2.10/CHANGELOG.md#2104)
+
+## 2.10.3
+
+**This is an LTS maintenance release and you can see the CHANGELOG in `release/2.10` branch.**
+
+[https://github.com/apache/apisix/blob/release/2.10/CHANGELOG.md#2103](https://github.com/apache/apisix/blob/release/2.10/CHANGELOG.md#2103)
+
 ## 2.10.2
 
-### Bugfix
+**This is an LTS maintenance release and you can see the CHANGELOG in `release/2.10` branch.**
 
-- fix: response.set_header should remove header like request.set_header [#5499](https://github.com/apache/apisix/pull/5499)
-- fix(batch-requests): correct the client ip in the pipeline [#5476](https://github.com/apache/apisix/pull/5476)
-- fix(upstream): load imbalance when it's referred by multiple routes [#5462](https://github.com/apache/apisix/pull/5462)
-- fix(hmac-auth): check if the X-HMAC-ALGORITHM header is missing [#5467](https://github.com/apache/apisix/pull/5467)
-- fix: prevent being hacked by untrusted request_uri [#5458](https://github.com/apache/apisix/pull/5458)
-- fix(admin): modify boolean parameters with PATCH [#5434](https://github.com/apache/apisix/pull/5432)
-- fix(traffic-split): multiple rules with multiple weighted_upstreams under each rule cause upstream_key duplicate [#5414](https://github.com/apache/apisix/pull/5414)
-- fix: add handler for invalid basic auth header values [#5419](https://github.com/apache/apisix/pull/5419)
-
-### Change
-
-- change: log insensitive consumer info only [#5445](https://github.com/apache/apisix/pull/5445)
+[https://github.com/apache/apisix/blob/release/2.10/CHANGELOG.md#2102](https://github.com/apache/apisix/blob/release/2.10/CHANGELOG.md#2102)
 
 ## 2.10.1
 
-### Bugfix
+**This is an LTS maintenance release and you can see the CHANGELOG in `release/2.10` branch.**
 
-- fix(zipkin): response_span doesn't have correct start time [#5295](https://github.com/apache/apisix/pull/5295)
-- fix(ext-plugin): don't use stale key [#5309](https://github.com/apache/apisix/pull/5309)
-- fix: route's timeout should not be overwrittern by service [#5219](https://github.com/apache/apisix/pull/5219)
-- fix: filter nil plugin conf triggered by etcd dir init [#5204](https://github.com/apache/apisix/pull/5204)
-- fix: pass correct host header to health checker target nodes [#5175](https://github.com/apache/apisix/pull/5175)
-- fix: upgrade lua-resty-balancer to 0.04 [#5144](https://github.com/apache/apisix/pull/5144)
-- fix(prometheus): avoid negative latency caused by inconsistent Nginx metrics [#5150](https://github.com/apache/apisix/pull/5150)
+[https://github.com/apache/apisix/blob/release/2.10/CHANGELOG.md#2101](https://github.com/apache/apisix/blob/release/2.10/CHANGELOG.md#2101)
 
 ## 2.10.0
 
@@ -177,7 +761,7 @@ title: Changelog
 - fix(grpc-transcode): support converting nested message [#4859](https://github.com/apache/apisix/pull/4859)
 - fix(authz-keycloak): set permissions as empty table when lazy_load_path is false [#4845](https://github.com/apache/apisix/pull/4845)
 - fix(proxy-cache): keep cache_method same with nginx's proxy_cache_methods [#4814](https://github.com/apache/apisix/pull/4814)
-- fix(admin): inject updatetime when the requst is PATCH with sub path [#4765](https://github.com/apache/apisix/pull/4765)
+- fix(admin): inject updatetime when the request is PATCH with sub path [#4765](https://github.com/apache/apisix/pull/4765)
 - fix(admin): check username for updating consumer [#4756](https://github.com/apache/apisix/pull/4756)
 - fix(error-log-logger): avoid sending stale error log [#4690](https://github.com/apache/apisix/pull/4690)
 - fix(grpc-transcode): handle enum type [#4706](https://github.com/apache/apisix/pull/4706)
@@ -825,7 +1409,7 @@ This release brings many new features such as health check and circuit breaker, 
 
 ### Core
 
-- :sunrise: **[Health Check and Circuit Breaker](https://github.com/apache/incubator-apisix/blob/master/docs/en/latest/health-check.md)**: Enable health check on the upstream node, and will automatically filter unhealthy nodes during load balancing to ensure system stability. [#249](https://github.com/apache/incubator-apisix/pull/249)
+- :sunrise: **[Health Check and Circuit Breaker](https://github.com/apache/incubator-apisix/blob/master/docs/en/latest/tutorials/health-check.md)**: Enable health check on the upstream node, and will automatically filter unhealthy nodes during load balancing to ensure system stability. [#249](https://github.com/apache/incubator-apisix/pull/249)
 - Anti-ReDoS(Regular expression Denial of Service). [#252](https://github.com/apache/incubator-apisix/pull/250)
 - supported debug mode. [#319](https://github.com/apache/incubator-apisix/pull/319)
 - allowed to use different router. [#364](https://github.com/apache/incubator-apisix/pull/364)

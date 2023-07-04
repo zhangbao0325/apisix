@@ -23,7 +23,7 @@ title: 调试功能
 
 ## `5xx` 响应状态码
 
-500、502、503 等类似的 `5xx` 状态码，是由于服务器错误而响应的状态码，当一个请求出现 `5xx` 状态码时；它可能来源于 `APISIX` 或 `Upstream` 。如何识别这些响应状态码的来源，是一件很有意义的事，它能够快速的帮助我们确定问题的所在。
+500、502、503 等类似的 `5xx` 状态码，是由于服务器错误而响应的状态码，当一个请求出现 `5xx` 状态码时；它可能来源于 `APISIX` 或 `Upstream` 。如何识别这些响应状态码的来源，是一件很有意义的事，它能够快速的帮助我们确定问题的所在。(当修改 `conf/config.yaml` 的配置 `show_upstream_status_in_response_header` 为 `true` 时，会返回所有上游状态码，不仅仅是 `5xx` 状态。)
 
 ## 如何识别 `5xx` 响应状态码的来源
 
@@ -31,10 +31,10 @@ title: 调试功能
 
 ## 示例
 
-示例1：`502` 响应状态码来源于 `Upstream` (IP 地址不可用)
+示例 1：`502` 响应状态码来源于 `Upstream` (IP 地址不可用)
 
 ```shell
-$ curl http://127.0.0.1:9080/apisix/admin/routes/1  -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+$ curl http://127.0.0.1:9180/apisix/admin/routes/1  -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
 {
     "methods": ["GET"],
     "upstream": {
@@ -72,10 +72,10 @@ $ curl http://127.0.0.1:9080/hello -v
 
 具有 `X-APISIX-Upstream-Status: 502` 的响应头。
 
-示例2: `502` 响应状态码来源于 `APISIX`
+示例 2：`502` 响应状态码来源于 `APISIX`
 
 ```shell
-$ curl http://127.0.0.1:9080/apisix/admin/routes/1  -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+$ curl http://127.0.0.1:9180/apisix/admin/routes/1  -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
 {
     "plugins": {
         "fault-injection": {
@@ -106,10 +106,10 @@ Fault Injection!
 
 没有 `X-APISIX-Upstream-Status` 的响应头。
 
-示例3：`Upstream` 具有多节点，并且所有节点不可用
+示例 3：`Upstream` 具有多节点，并且所有节点不可用
 
 ```shell
-$ curl http://127.0.0.1:9080/apisix/admin/upstreams/1  -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+$ curl http://127.0.0.1:9180/apisix/admin/upstreams/1  -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
 {
     "nodes": {
         "127.0.0.3:1": 1,
@@ -122,7 +122,7 @@ $ curl http://127.0.0.1:9080/apisix/admin/upstreams/1  -H 'X-API-KEY: edd1c9f034
 ```
 
 ```shell
-$ curl http://127.0.0.1:9080/apisix/admin/routes/1  -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+$ curl http://127.0.0.1:9180/apisix/admin/routes/1  -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
 {
     "uri": "/hello",
     "upstream_id": "1"

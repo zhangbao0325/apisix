@@ -1,5 +1,11 @@
 ---
 title: prometheus
+keywords:
+  - Apache APISIX
+  - API Gateway
+  - Plugin
+  - Prometheus
+description: This document contains information about the Apache APISIX prometheus Plugin.
 ---
 
 <!--
@@ -21,22 +27,82 @@ title: prometheus
 #
 -->
 
-This plugin exposes metrics in Prometheus Exposition format.
+## Description
+
+The `prometheus` Plugin exports metrics in [Prometheus exposition format](https://prometheus.io/docs/instrumenting/exposition_formats/#exposition-formats).
 
 ## Attributes
 
-| Name         | Type      | Requirement | Default  | Valid | Description                                                                                |
-| ------------ | --------- | ----------- | -------- | ----- | ------------------------------------------------------------------------------------------ |
-| prefer_name  | boolean   | optional    | false    |       | When set to `true`, would print route/service `name` instead of `id` in Prometheus metric. |
+| Name        | Type    | Required | Default | Description                                                                       |
+| ----------- | ------- | -------- | ------- | --------------------------------------------------------------------------------- |
+| prefer_name | boolean | False    | false   | When set to `true`, prints Route/Service name instead of ID in Prometheus metric. |
+
+### Specifying `export_uri`
+
+You can change the default export URI by configuring the `export_uri` attribute under `plugin_attr` in your configuration file (`conf/config.yaml`).
+
+| Name       | Type   | Default                      | Description                           |
+| ---------- | ------ | ---------------------------- | ------------------------------------- |
+| export_uri | string | "/apisix/prometheus/metrics" | URI to export the Prometheus metrics. |
+
+Here is a configuration example:
+
+```yaml title="conf/config.yaml"
+plugin_attr:
+  prometheus:
+    export_uri: /apisix/metrics
+```
+
+### Specifying `metrics`
+
+For http request related metrics, you could specify extra labels, which match the APISIX variables.
+
+If you specify label for nonexist APISIX variable, the label value would be "".
+
+Currently, only below metrics are supported:
+
+* http_status
+* http_latency
+* bandwidth
+
+Here is a configuration example:
+
+```yaml title="conf/config.yaml"
+plugin_attr:
+  prometheus:
+    metrics:
+        http_status:
+            extra_labels:
+                - upstream_addr: $upstream_addr
+                - upstream_status: $upstream_status
+```
+
+### Specifying `default_buckets`
+
+`DEFAULT_BUCKETS` is the default value for bucket array in `http_latency` metrics.
+
+You can change the `DEFAULT_BUCKETS` by configuring `default_buckets` attribute in you configuration file.
+
+Here is a configuration example:
+
+```yaml title="conf/config.yaml"
+plugin_attr:
+  prometheus:
+    default_buckets:
+      - 15
+      - 55
+      - 105
+      - 205
+      - 505
+```
 
 ## API
 
-This plugin will add `/apisix/prometheus/metrics` to expose the metrics.
+This Plugin will add the API endpoint `/apisix/prometheus/metrics` or your custom export URI for exposing the metrics.
 
-The metrics are exposed via a separate Prometheus server address.
-By default, the address is `127.0.0.1:9091`. You can change it in the `conf/config.yaml`, for example:
+These metrics are exposed by a separate Prometheus server address. By default, the address is `127.0.0.1:9091`. You can change it in your configuration file (`conf/config.yaml`):
 
-```
+```yaml title="conf/config.yaml"
 plugin_attr:
   prometheus:
     export_addr:
@@ -44,28 +110,35 @@ plugin_attr:
       port: 9092
 ```
 
-Assume environment variable `INTRANET_IP` is `172.1.1.1`, now APISIX will export the metrics via `172.1.1.1:9092`.
+Now, if the environment variable `INTRANET_IP` is `172.1.1.1`, APISIX will export the metrics via `172.1.1.1:9092`.
 
-**Before version `2.6`, the metrics are exposed via the data panel port,
-you may need to use [interceptors](../plugin-interceptors.md) to protect it.**
+If you still want to expose the metrics via the data plane port (default: `9080`), you can configure it as shown below:
 
-If you still want this behavior, you can configure it like this:
-
-```
+```yaml title="conf/config.yaml"
 plugin_attr:
   prometheus:
     enable_export_server: false
 ```
 
-## How to enable it
+You can then expose it by using the [public-api](public-api.md) Plugin.
 
-`prometheus` plugin could be enable with empty table.
-Notice, `name` could be duplicated for multiple routes/services, so when set `prefer_name` to `true`, take care of naming format or it could be misleading.
+:::info IMPORTANT
 
-For example:
+If the Prometheus plugin collects too many metrics, it will take CPU resources to calculate the metric data when getting the metrics via URI, which may affect APISIX to process normal requests. To solve this problem, APISIX exposes the URI and calculates the metrics in the [privileged agent](https://github.com/openresty/lua-resty-core/blob/master/lib/ngx/process.md#enable_privileged_agent).
+If the URI is exposed using the public-api plugin, then APISIX will calculate the metric data in a normal worker process, which may still affect APISIX processing of normal requests.
+
+This feature requires APISIX to run on [APISIX-Base](../FAQ.md#how-do-i-build-the-apisix-base-environment).
+
+:::
+
+## Enabling the Plugin
+
+The `prometheus` Plugin can be enabled with an empty table.
+
+The example below shows how you can configure the Plugin on a specific Route:
 
 ```shell
-curl http://127.0.0.1:9080/apisix/admin/routes/1  -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+curl http://127.0.0.1:9180/apisix/admin/routes/1  -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
 {
     "uri": "/hello",
     "plugins": {
@@ -80,7 +153,13 @@ curl http://127.0.0.1:9080/apisix/admin/routes/1  -H 'X-API-KEY: edd1c9f034335f1
 }'
 ```
 
-You can use [APISIX Dashboard](https://github.com/apache/apisix-dashboard) to complete the above operations through the web console.
+:::note
+
+When `prefer_name` is set to `true` make sure to not duplicate names for multiple Routes/Services or it could be misleading.
+
+:::
+
+<!-- You can use [APISIX Dashboard](https://github.com/apache/apisix-dashboard) to complete the above operations through the web console.
 
 First, add a Route:
 
@@ -88,59 +167,38 @@ First, add a Route:
 
 Then add prometheus plugin:
 
-![enable prometheus plugin](../../../assets/images/plugin/prometheus-2.png)
+![enable prometheus plugin](../../../assets/images/plugin/prometheus-2.png) -->
 
-## How to fetch the metric data
+## Fetching metrics
 
-We fetch the metric data from the specified url `/apisix/prometheus/metrics`.
+You can fetch the metrics from the specified export URI (default: `/apisix/prometheus/metrics`):
 
-```
+```shell
 curl -i http://127.0.0.1:9091/apisix/prometheus/metrics
 ```
 
-Puts this URL address into prometheus, and it will automatically fetch
-these metric data.
-
-For example like this:
+You can add this address to Prometheus to fetch the data:
 
 ```yaml
 scrape_configs:
-  - job_name: 'apisix'
+  - job_name: "apisix"
     scrape_interval: 15s # This value will be related to the time range of the rate function in Prometheus QL. The time range in the rate function should be at least twice this value.
-    metrics_path: '/apisix/prometheus/metrics'
+    metrics_path: "/apisix/prometheus/metrics"
     static_configs:
-    - targets: ['127.0.0.1:9091']
+      - targets: ["127.0.0.1:9091"]
 ```
 
-And we can check the status at prometheus console:
+Now, you will be able to check the status in your Prometheus console:
 
 ![checking status on prometheus dashboard](../../../assets/images/plugin/prometheus01.png)
 
 ![prometheus apisix in-depth metric view](../../../assets/images/plugin/prometheus02.png)
 
-## How to specify export uri
+## Using Grafana to graph the metrics
 
-We can change the default export uri in the `plugin_attr` section of `conf/config.yaml`.
+Metrics exported by the `prometheus` Plugin can be graphed in Grafana using a drop in dashboard.
 
-| Name       | Type   | Default                      | Description                       |
-| ---------- | ------ | ---------------------------- | --------------------------------- |
-| export_uri | string | "/apisix/prometheus/metrics" | uri to get the prometheus metrics |
-
-Here is an example:
-
-```yaml
-plugin_attr:
-  prometheus:
-    export_uri: /apisix/metrics
-```
-
-### Grafana dashboard
-
-Metrics exported by the plugin can be graphed in Grafana using a drop in dashboard.
-
-Downloads [Grafana dashboard meta](https://github.com/apache/apisix/blob/master/docs/assets/other/json/apisix-grafana-dashboard.json) and imports it to Grafana。
-
-Or you can goto [Grafana official](https://grafana.com/grafana/dashboards/11719) for `Grafana` meta data.
+To set it up, download [Grafana dashboard meta](https://github.com/apache/apisix/blob/master/docs/assets/other/json/apisix-grafana-dashboard.json) and import it in Grafana. Or, you can go to [Grafana official](https://grafana.com/grafana/dashboards/11719) for Grafana metadata.
 
 ![Grafana chart-1](../../../assets/images/plugin/grafana-1.png)
 
@@ -150,54 +208,70 @@ Or you can goto [Grafana official](https://grafana.com/grafana/dashboards/11719)
 
 ![Grafana chart-4](../../../assets/images/plugin/grafana-4.png)
 
-### Available metrics
+## Available HTTP metrics
 
-* `Status codes`: HTTP status code returned from upstream services. These status code available per service and across all services.
+The following metrics are exported by the `prometheus` Plugin:
 
-    Attributes：
+- Status code: HTTP status code returned from Upstream services. They are available for a single service and across all services.
 
-    | Name         | Description         |
-    | -------------| --------------------|
-    | code         | The HTTP status code returned by the upstream service. |
-    | route        | The `route_id` of the matched route is request. If it does not match, the default value is an empty string. |
-    | matched_uri  | The `uri` of the route matching the request, if it does not match, the default value is an empty string. |
-    | matched_host | The `host` of the route that matches the request. If it does not match, the default value is an empty string. |
-    | service      | The `service_id` of the route matched by the request. When the route lacks service_id, the default is `$host`. |
-    | consumer     | The `consumer_name` of the consumer that matches the request. If it does not match, the default value is an empty string. |
-    | node         | The `ip` of the upstream node. |
+  The available attributes are:
 
-* `Bandwidth`: Total Bandwidth (egress/ingress) flowing through APISIX. The total bandwidth of per service can be counted.
+  | Name         | Description                                                                                                                   |
+  |--------------|-------------------------------------------------------------------------------------------------------------------------------|
+  | code         | HTTP status code returned by the upstream service.                                                                            |
+  | route        | `route_id` of the matched Route with request. Defaults to an empty string if the Routes don't match.                          |
+  | matched_uri  | `uri` of the Route matching the request. Defaults to an empty string if the Routes don't match.                               |
+  | matched_host | `host` of the Route matching the request. Defaults to an empty string if the Routes don't match.                              |
+  | service      | `service_id` of the Route matching the request. If the Route does not have a `service_id` configured, it defaults to `$host`. |
+  | consumer     | `consumer_name` of the Consumer matching the request. Defaults to an empty string if it does not match.                       |
+  | node         | IP address of the Upstream node.                                                                                              |
 
-    Attributes：
+- Bandwidth: Total amount of traffic (ingress and egress) flowing through APISIX. Total bandwidth of a service can also be obtained.
 
-    | Name         | Description |
-    | -------------| ------------- |
-    | type         | The type of bandwidth(egress/ingress). |
-    | route        | The `route_id` of the matched route is request. If it does not match, the default value is an empty string.. |
-    | service      | The `service_id` of the route matched by the request. When the route lacks service_id, the default is `$host`. |
-    | consumer     | The `consumer_name` of the consumer that matches the request. If it does not match, the default value is an empty string. |
-    | node         | The `ip` of the upstream node. |
+  The available attributes are:
 
-* `etcd reachability`: A gauge type with a value of 0 or 1, representing if etcd can be reached by a APISIX or not, where `1` is available, and `0` is unavailable.
-* `Connections`: Various Nginx connection metrics like active, reading, writing, and number of accepted connections.
-* `Batch process entries`: A gauge type, when we use plugins and the plugin used batch process to send data, such as: sys logger, http logger, sls logger, tcp logger, udp logger and zipkin, then the entries which hasn't been sent in batch process will be counted in the metrics.
-* `Latency`: The per service histogram of request time in different dimensions.
+  | Name     | Description                                                                                                                   |
+  |----------|-------------------------------------------------------------------------------------------------------------------------------|
+  | type     | Type of traffic (egress/ingress).                                                                                             |
+  | route    | `route_id` of the matched Route with request. Defaults to an empty string if the Routes don't match.                          |
+  | service  | `service_id` of the Route matching the request. If the Route does not have a `service_id` configured, it defaults to `$host`. |
+  | consumer | `consumer_name` of the Consumer matching the request. Defaults to an empty string if it does not match.                       |
+  | node     | IP address of the Upstream node.                                                                                              |
 
-    Attributes：
+- etcd reachability: A gauge type representing whether etcd can be reached by APISIX. A value of `1` represents reachable and `0` represents unreachable.
+- Connections: Nginx connection metrics like active, reading, writing, and number of accepted connections.
+- Batch process entries: A gauge type useful when Plugins like [syslog](./syslog.md), [http-logger](./http-logger.md), [tcp-logger](./tcp-logger.md), [udp-logger](./udp-logger.md), and [zipkin](./zipkin.md) use batch process to send data. Entries that hasn't been sent in batch process will be counted in the metrics.
+- Latency: Histogram of the request time per service in different dimensions.
 
-    | Name      | Description |
-    | ----------| ------------- |
-    | type      | The value can be `apisix`, `upstream` or `request`, which means http latency caused by apisix, upstream, or their sum. |
-    | service   | The `service_id` of the route matched by the request. When the route lacks service_id, the default is `$host`. |
-    | consumer  | The `consumer_name` of the consumer that matches the request. If it does not match, the default value is an empty string. |
-    | node      | The `ip` of the upstream node. |
+  The available attributes are:
 
-* `Info`: the information of APISIX node.
+  | Name     | Description                                                                                                                         |
+  |----------|-------------------------------------------------------------------------------------------------------------------------------------|
+  | type     | Value can be one of `apisix`, `upstream`, or `request`. This translates to latency caused by APISIX, Upstream, or both (their sum). |
+  | service  | `service_id` of the Route matching the request. If the Route does not have a `service_id` configured, it defaults to `$host`.       |
+  | consumer | `consumer_name` of the Consumer matching the request. Defaults to an empty string if it does not match.                             |
+  | node     | IP address of the Upstream node.                                                                                                    |
 
-Here is the original metric data of APISIX:
+- Info: Information about the APISIX node.
+- Shared dict: The capacity and free space of all nginx.shared.DICT in APISIX.
+
+- `apisix_upstream_status`: Health check result status of upstream nodes. A value of `1` represents healthy and `0` represents unhealthy.
+
+  The available attributes are:
+
+  | Name         | Description                                                                                                                   |
+  |--------------|-------------------------------------------------------------------------------------------------------------------------------|
+  | name         | resource id where the upstream node is attached to, e.g. `/apisix/routes/1`, `/apisix/upstreams/1`.                                                                            |
+  | ip        | ip address of the node.                          |
+  | port  | port number of the node.                               |
+
+Here are the original metrics from APISIX:
 
 ```shell
-$ curl http://127.0.0.1:9091/apisix/prometheus/metrics
+curl http://127.0.0.1:9091/apisix/prometheus/metrics
+```
+
+```shell
 # HELP apisix_bandwidth Total bandwidth in bytes consumed per service in Apisix
 # TYPE apisix_bandwidth counter
 apisix_bandwidth{type="egress",route="",service="",consumer="",node=""} 8417
@@ -235,13 +309,15 @@ apisix_etcd_reachable 1
 apisix_http_status{code="200",route="1",matched_uri="/hello",matched_host="",service="",consumer="",node="127.0.0.1"} 4
 apisix_http_status{code="200",route="2",matched_uri="/world",matched_host="",service="",consumer="",node="127.0.0.1"} 4
 apisix_http_status{code="404",route="",matched_uri="",matched_host="",service="",consumer="",node=""} 1
+# HELP apisix_http_requests_total The total number of client requests
+# TYPE apisix_http_requests_total gauge
+apisix_http_requests_total 1191780
 # HELP apisix_nginx_http_current_connections Number of HTTP connections
 # TYPE apisix_nginx_http_current_connections gauge
 apisix_nginx_http_current_connections{state="accepted"} 11994
 apisix_nginx_http_current_connections{state="active"} 2
 apisix_nginx_http_current_connections{state="handled"} 11994
 apisix_nginx_http_current_connections{state="reading"} 0
-apisix_nginx_http_current_connections{state="total"} 1191780
 apisix_nginx_http_current_connections{state="waiting"} 1
 apisix_nginx_http_current_connections{state="writing"} 1
 # HELP apisix_nginx_metric_errors_total Number of nginx-lua-prometheus errors
@@ -259,15 +335,36 @@ apisix_http_latency_bucket{type="upstream",route="1",service="",consumer="",node
 # HELP apisix_node_info Info of APISIX node
 # TYPE apisix_node_info gauge
 apisix_node_info{hostname="desktop-2022q8f-wsl"} 1
+# HELP apisix_shared_dict_capacity_bytes The capacity of each nginx shared DICT since APISIX start
+# TYPE apisix_shared_dict_capacity_bytes gauge
+apisix_shared_dict_capacity_bytes{name="access-tokens"} 1048576
+apisix_shared_dict_capacity_bytes{name="balancer-ewma"} 10485760
+apisix_shared_dict_capacity_bytes{name="balancer-ewma-last-touched-at"} 10485760
+apisix_shared_dict_capacity_bytes{name="balancer-ewma-locks"} 10485760
+apisix_shared_dict_capacity_bytes{name="discovery"} 1048576
+apisix_shared_dict_capacity_bytes{name="etcd-cluster-health-check"} 10485760
+...
+# HELP apisix_shared_dict_free_space_bytes The free space of each nginx shared DICT since APISIX start
+# TYPE apisix_shared_dict_free_space_bytes gauge
+apisix_shared_dict_free_space_bytes{name="access-tokens"} 1032192
+apisix_shared_dict_free_space_bytes{name="balancer-ewma"} 10412032
+apisix_shared_dict_free_space_bytes{name="balancer-ewma-last-touched-at"} 10412032
+apisix_shared_dict_free_space_bytes{name="balancer-ewma-locks"} 10412032
+apisix_shared_dict_free_space_bytes{name="discovery"} 1032192
+apisix_shared_dict_free_space_bytes{name="etcd-cluster-health-check"} 10412032
+...
+# HELP apisix_upstream_status Upstream status from health check
+# TYPE apisix_upstream_status gauge
+apisix_upstream_status{name="/apisix/routes/1",ip="100.24.156.8",port="80"} 0
+apisix_upstream_status{name="/apisix/routes/1",ip="52.86.68.46",port="80"} 1
 ```
 
 ## Disable Plugin
 
-Remove the corresponding json configuration in the plugin configuration to disable `prometheus`.
-APISIX plugins are hot-reloaded, therefore no need to restart APISIX.
+To disable the `prometheus` Plugin, you can delete the corresponding JSON configuration from the Plugin configuration. APISIX will automatically reload and you do not have to restart for this to take effect.
 
 ```shell
-curl http://127.0.0.1:9080/apisix/admin/routes/1  -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+curl http://127.0.0.1:9180/apisix/admin/routes/1  -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
 {
     "uri": "/hello",
     "plugins": {},
@@ -278,4 +375,69 @@ curl http://127.0.0.1:9080/apisix/admin/routes/1  -H 'X-API-KEY: edd1c9f034335f1
         }
     }
 }'
+```
+
+## How to enable it for TCP/UDP
+
+:::info IMPORTANT
+
+This feature requires APISIX to run on [APISIX-Base](../FAQ.md#how-do-i-build-the-apisix-base-environment?).
+
+:::
+
+We can also enable `prometheus` to collect metrics for TCP/UDP.
+
+First of all, ensure `prometheus` plugin is in your configuration file (`conf/config.yaml`):
+
+```yaml title="conf/config.yaml"
+stream_plugins:
+  - ...
+  - prometheus
+```
+
+Then you need to configure the `prometheus` plugin on the stream route:
+
+```shell
+curl http://127.0.0.1:9180/apisix/admin/stream_routes/1 -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+{
+    "plugins": {
+        "prometheus":{}
+    },
+    "upstream": {
+        "type": "roundrobin",
+        "nodes": {
+            "127.0.0.1:80": 1
+        }
+    }
+}'
+```
+
+## Available TCP/UDP metrics
+
+The following metrics are available when using APISIX as an L4 proxy.
+
+* `Stream Connections`: The number of processed connections at the route level.
+
+    Attributes:
+
+    | Name          | Description             |
+    | ------------- | --------------------    |
+    | route         | matched stream route ID |
+* `Connections`: Various Nginx connection metrics like active, reading, writing, and number of accepted connections.
+* `Info`: Information about the current APISIX node.
+
+Here are examples of APISIX metrics:
+
+```shell
+$ curl http://127.0.0.1:9091/apisix/prometheus/metrics
+```
+
+```
+...
+# HELP apisix_node_info Info of APISIX node
+# TYPE apisix_node_info gauge
+apisix_node_info{hostname="desktop-2022q8f-wsl"} 1
+# HELP apisix_stream_connection_total Total number of connections handled per stream route in APISIX
+# TYPE apisix_stream_connection_total counter
+apisix_stream_connection_total{route="1"} 1
 ```

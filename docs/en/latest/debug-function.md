@@ -23,7 +23,7 @@ title: Debug Function
 
 ## `5xx` response status code
 
-Similar `5xx` status codes such as 500, 502, 503, etc., are the status codes in response to a server error. When a request has a `5xx` status code; it may come from `APISIX` or `Upstream`. How to identify the source of these response status codes is a very meaningful thing. It can quickly help us determine the problem.
+Similar `5xx` status codes such as 500, 502, 503, etc., are the status codes in response to a server error. When a request has a `5xx` status code; it may come from `APISIX` or `Upstream`. How to identify the source of these response status codes is a very meaningful thing. It can quickly help us determine the problem. (When modifying the configuration `show_upstream_status_in_response_header` in `conf/config.yaml` to `true`, all upstream status codes will be returned, not only `5xx` status.)
 
 ## How to identify the source of the `5xx` response status code
 
@@ -34,7 +34,7 @@ In the response header of the request, through the response header of `X-APISIX-
 >Example 1: `502` response status code comes from `Upstream` (IP address is not available)
 
 ```shell
-$ curl http://127.0.0.1:9080/apisix/admin/routes/1  -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+$ curl http://127.0.0.1:9180/apisix/admin/routes/1  -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
 {
     "methods": ["GET"],
     "upstream": {
@@ -75,7 +75,7 @@ It has a response header of `X-APISIX-Upstream-Status: 502`.
 >Example 2: `502` response status code comes from `APISIX`
 
 ```shell
-$ curl http://127.0.0.1:9080/apisix/admin/routes/1  -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+$ curl http://127.0.0.1:9180/apisix/admin/routes/1  -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
 {
     "plugins": {
         "fault-injection": {
@@ -109,7 +109,7 @@ There is no response header for `X-APISIX-Upstream-Status`.
 >Example 3: `Upstream` has multiple nodes, and all nodes are unavailable
 
 ```shell
-$ curl http://127.0.0.1:9080/apisix/admin/upstreams/1  -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+$ curl http://127.0.0.1:9180/apisix/admin/upstreams/1  -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
 {
     "nodes": {
         "127.0.0.3:1": 1,
@@ -122,7 +122,7 @@ $ curl http://127.0.0.1:9080/apisix/admin/upstreams/1  -H 'X-API-KEY: edd1c9f034
 ```
 
 ```shell
-$ curl http://127.0.0.1:9080/apisix/admin/routes/1  -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+$ curl http://127.0.0.1:9180/apisix/admin/routes/1  -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
 {
     "uri": "/hello",
     "upstream_id": "1"

@@ -1,5 +1,11 @@
 ---
 title: openid-connect
+keywords:
+  - Apache APISIX
+  - API Gateway
+  - OpenID Connect
+  - OIDC
+description: OpenID Connect allows the client to obtain user information from the identity providers, such as Keycloak, Ory Hydra, Okta, Auth0, etc. API Gateway APISIX supports to integrate with the above identity providers to protect your APIs.
 ---
 
 <!--
@@ -21,189 +27,160 @@ title: openid-connect
 #
 -->
 
-## Summary
+## Description
 
-- [**Name**](#name)
-- [**Attributes**](#attributes)
-- [**Modes of operation**](#modes-of-operation)
-    - [**Token Introspection**](#token-introspection)
-    - [**Introspecting with public key**](#introspecting-with-public-key)
-- [**Troubleshooting**](#troubleshooting)
-
-## Name
-
-The OAuth 2 / Open ID Connect(OIDC) plugin provides authentication and introspection capability to APISIX.
+[OpenID Connect](https://openid.net/connect/) (OIDC) is an authentication protocol based on the OAuth 2.0. It allows the client to obtain user information from the identity provider (IdP), e.g., Keycloak, Ory Hydra, Okta, Auth0, etc. API Gateway Apache APISIX supports to integrate with the above identity providers to protect your APIs.
 
 ## Attributes
 
-| Name                                 | Type    | Requirement | Default               | Valid   | Description                                                                                                                     |
-| ------------------------------------ | ------- | ----------- | --------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| client_id                            | string  | required    |                       |         | OAuth client ID                                                                                                                 |
-| client_secret                        | string  | required    |                       |         | OAuth client secret                                                                                                             |
-| discovery                            | string  | required    |                       |         | URL of the discovery endpoint of the identity server                                                                            |
-| scope                                | string  | optional    | "openid"              |         | Scope used for the authentication                                                                                               |
-| realm                                | string  | optional    | "apisix"              |         | Realm used for the authentication                                                                                               |
-| bearer_only                          | boolean | optional    | false                 |         | Setting this `true` will check for the authorization header in the request with a bearer token                                  |
-| logout_path                          | string  | optional    | "/logout"             |         |                                                                                                                                 |
-| redirect_uri                         | string  | optional    | "ngx.var.request_uri" |         |                                                                                                                                 |
-| timeout                              | integer | optional    | 3                     | [1,...] | Timeout in seconds                                                                                                              |
-| ssl_verify                           | boolean | optional    | false                 |         |                                                                                                                                 |
-| introspection_endpoint               | string  | optional    |                       |         | URL of the token verification endpoint of the identity server                                                                   |
-| introspection_endpoint_auth_method   | string  | optional    | "client_secret_basic" |         | Authentication method name for token introspection                                                                              |
-| public_key                           | string  | optional    |                       |         | The public key to verify the token                                                                                              |
-| token_signing_alg_values_expected    | string  | optional    |                       |         | Algorithm used to sign the token                                                                                                |
-| set_access_token_header              | boolean | optional    | true                  |         | Whether to ensure the access token is set in a request header.                                                                  |
-| access_token_in_authorization_header | boolean | optional    | false                 |         | If set to `true`, ensure that the access token is set in the `Authorization` header, otherwise use the `X-Access-Token` header. |
-| set_id_token_header                  | boolean | optional    | true                  |         | Whether to ensure the ID token, if available, is set in the `X-ID-Token` request header.                                        |
-| set_userinfo_header                  | boolean | optional    | true                  |         | Whether to ensure the UserInfo object, if available, is set in the `X-Userinfo` request header.                                 |
+| Name                                 | Type    | Required | Default               | Valid values | Description                                                                                                              |
+|--------------------------------------|---------|----------|-----------------------|--------------|--------------------------------------------------------------------------------------------------------------------------|
+| client_id                            | string  | True     |                       |              | OAuth client ID.                                                                                                         |
+| client_secret                        | string  | True     |                       |              | OAuth client secret.                                                                                                     |
+| discovery                            | string  | True     |                       |              | Discovery endpoint URL of the identity server.                                                                           |
+| scope                                | string  | False    | "openid"              |              | Scope used for authentication.                                                                                           |
+| realm                                | string  | False    | "apisix"              |              | Realm used for authentication.                                                                                           |
+| bearer_only                          | boolean | False    | false                 |              | When set to `true`, APISIX will only check if the authorization header in the request matches a bearer token.           |
+| logout_path                          | string  | False    | "/logout"             |              | Path for logging out.                                                                                                    |
+| post_logout_redirect_uri             | string  | False    |                       |              | URL to redirect to after logging out.                                                                                    |
+| redirect_uri                         | string  | False    | "ngx.var.request_uri" |              | URI to which the identity provider redirects back to.                                                                    |
+| timeout                              | integer | False    | 3                     | [1,...]      | Request timeout time in seconds.                                                                                         |
+| ssl_verify                           | boolean | False    | false                 |              | When set to true, verifies the identity provider's SSL certificates.                                                     |
+| introspection_endpoint               | string  | False    |                       |              | URL of the token verification endpoint of the identity server.                                                           |
+| introspection_endpoint_auth_method   | string  | False    | "client_secret_basic" |              | Authentication method name for token introspection.                                                                      |
+| token_endpoint_auth_method           | string  | False    |                       |              | Authentication method name for token endpoint. The default will get the first supported method specified by the OP.      |
+| public_key                           | string  | False    |                       |              | Public key to verify the token.                                                                                          |
+| use_jwks                             | boolean | False    | false                 |              | When set to `true`, uses the JWKS endpoint of the identity server to verify the token.                                   |
+| use_pkce                             | boolean | False    | false                 |              | when set to `true`, the "Proof Key for Code Exchange" as defined in RFC 7636 will be used.   |
+| token_signing_alg_values_expected    | string  | False    |                       |              | Algorithm used for signing the authentication token.                                                                     |
+| set_access_token_header              | boolean | False    | true                  |              | When set to true, sets the access token in a request header.                                                             |
+| access_token_in_authorization_header | boolean | False    | false                 |              | When set to true, sets the access token in the `Authorization` header. Otherwise, set the `X-Access-Token` header.       |
+| set_id_token_header                  | boolean | False    | true                  |              | When set to true and the ID token is available, sets the ID token in the `X-ID-Token` request header.                    |
+| set_userinfo_header                  | boolean | False    | true                  |              | When set to true and the UserInfo object is available, sets it in the `X-Userinfo` request header.                       |
+| set_refresh_token_header             | boolean | False    | false                 |              | When set to true and a refresh token object is available, sets it in the `X-Refresh-Token` request header.               |
+| session                              | object  | False    |                       |              | When bearer_only is set to false, openid-connect will use Authorization Code flow to authenticate on the IDP, so you need to set the session-related configuration. |
+| session.secret                       | string  | True     | Automatic generation  | 16 or more characters | The key used for session encrypt and HMAC operation. |
+| unauth_action                        | string  | False    | "auth"                |              | Specify the response type on unauthenticated requests. "auth" redirects to identity provider, "deny" results in a 401 response, "pass" will allow the request without authentication. |
 
-## Modes of operation
+NOTE: `encrypt_fields = {"client_secret"}` is also defined in the schema, which means that the field will be stored encrypted in etcd. See [encrypted storage fields](../plugin-develop.md#encrypted-storage-fields).
 
-The plugin supports different modes of operation.
+## Scenarios
 
-1) It can be configured to just validate an access token that is expected to be present in a request header.
-In this case, requests without a token or where the token is invalid are always rejected. This requires
-`bearer_only` be set to `true` and that either an introspection endpoint has been configured through
-`introspection_endpoint`, or that a public key has been configured through `public_key`. See the relevant
-sections below.
+:::tip
 
-2) Alternatively, the plugin can also be configured to authenticate a request without a valid token against
-an identity provider by going through the OIDC Authorization Code flow. The plugin then acts as an OIDC Relying Party.
-In this scenario, when the requesting user has authenticated successfully, the plugin will obtain and manage
-an access token and further user claims on behalf of the user in a session cookie. Subsequent requests that
-contain the cookie will use the access token stored in the cookie. In this case, `bearer_only` must be set to `false`.
+Tutorial: [Use Keycloak with API Gateway to secure APIs](https://apisix.apache.org/blog/2022/07/06/use-keycloak-with-api-gateway-to-secure-apis/)
 
-The first option is typically appropriate for service-to-service communication where the requesting side can
-be reasonably expected to obtain and manage a valid access token by itself. The second option is convenient
-to support web browser interaction with endpoints through a human user that may still need to be authenticated
-when accessing for the first time.
+:::
 
-The plugin can also be configured to support both scenarios by setting `bearer_only` to false, but still configuring
-either an introspection endpoint or a public key. In this case, introspection of an existing token from a request
-header takes precedence over the Relying Party flow. That is, if a request contains an invalid token, the request
-will be rejected without redirecting to the ID provider to obtain a valid token.
+This plugin offers two scenorios:
 
-The method used to authenticate a request also affects the headers that can be enforced on the request before
-sending it to upstream. The headers that can be enforced are mentioned below in each relevant section.
+1. Authentication between Services: Set `bearer_only` to `true` and configure the `introspection_endpoint` or `public_key` attribute. In this scenario, APISIX will reject requests without a token or invalid token in the request header.
 
-### Token Introspection
+2. Authentication between Browser and Identity Providers: Set `bearer_only` to `false.` After successful authentication, this plugin can obtain and manage the token in the cookie, and subsequent requests will use the token. In this mode, the user session will be stored in the browser as a cookie and this data is encrypted, so you have to set a key for encryption via `session.secret`.
 
-Token introspection helps to validate a request by verifying the token against an Oauth 2 authorization server.
-As prerequisite, you should create a trusted client in the identity server and generate a valid token(JWT) for introspection.
-The following image shows an example(successful) flow of the token introspection via the gateway.
+### Token introspection
 
-![token introspection](../../../assets/images/plugin/oauth-1.png)
+[Token introspection](https://www.oauth.com/oauth2-servers/token-introspection-endpoint/) validates a request by verifying the token with an OAuth 2.0 authorization server.
 
-The following is the curl command to enable the plugin to an external service.
-This route will protect `https://httpbin.org/get`(echo service) by introspecting the token provided in the header of the request.
+You should first create a trusted client in the identity server and generate a valid JWT token for introspection.
+
+The image below shows an example token introspection flow via a Gateway:
+
+![token introspection](https://raw.githubusercontent.com/apache/apisix/master/docs/assets/images/plugin/oauth-1.png)
+
+The example below shows how you can enable the Plugin on Route. The Route below will protect the Upstream by introspecting the token provided in the request header:
 
 ```bash
-curl http://127.0.0.1:9080/apisix/admin/routes/5 -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+curl http://127.0.0.1:9180/apisix/admin/routes/5 -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
 {
   "uri": "/get",
-  "plugins": {
-    "proxy-rewrite": {
-      "scheme": "https"
-    },
-    "openid-connect": {
-      "client_id": "api_six_client_id",
-      "client_secret": "client_secret_code",
-      "discovery": "full_URL_of_the_discovery_endpoint",
-      "introspection_endpoint": "full_URL_of_introspection_endpoint",
+  "plugins":{
+    "openid-connect":{
+      "client_id": "${CLIENT_ID}",
+      "client_secret": "${CLIENT_SECRET}",
+      "discovery": "${DISCOVERY_ENDPOINT}",
+      "introspection_endpoint": "${INTROSPECTION_ENDPOINT}",
       "bearer_only": true,
       "realm": "master",
       "introspection_endpoint_auth_method": "client_secret_basic"
     }
   },
-  "upstream": {
+  "upstream":{
     "type": "roundrobin",
-    "nodes": {
-      "httpbin.org:443": 1
+    "nodes":{
+      "httpbin.org:443":1
     }
   }
 }'
 ```
 
-The following command can be used to access the new route.
+Now, to access the Route:
 
 ```bash
-curl -i -X GET http://127.0.0.1:9080/get -H "Host: httpbin.org" -H "Authorization: Bearer {replace_jwt_token}"
+curl -i -X GET http://127.0.0.1:9080/get -H "Host: httpbin.org" -H "Authorization: Bearer {JWT_TOKEN}"
 ```
 
-In this case, the plugin can enforce that the access token and the UserInfo object get set in respective configured request headers.
+In this example, the Plugin enforces that the access token and the Userinfo object be set in the request headers.
 
-When the Oauth 2 authorization server returns an expire time with the token, the token will be cached in APISIX until it is expired.
-For more details, please read:
+When the OAuth 2.0 authorization server returns an expire time with the token, it is cached in APISIX until expiry. For more details, read:
 
-1. [lua-resty-openidc](https://github.com/zmartzone/lua-resty-openidc)'s doc and source code.
+1. [lua-resty-openidc](https://github.com/zmartzone/lua-resty-openidc)'s documentation and source code.
 2. `exp` field in the RFC's [Introspection Response](https://tools.ietf.org/html/rfc7662#section-2.2) section.
 
 ### Introspecting with public key
 
-You can also provide the public key of the JWT token to verify the token. In case if you have provided a public key and
-a token introspection endpoint, the public key workflow will be executed instead of verifying with the identity server.
-This method can be used if you want to reduce additional network calls and to speedup the process.
+You can also provide the public key of the JWT token for verification. If you have provided a public key and a token introspection endpoint, the public key workflow will be executed instead of verification through an identity server. This is useful if you want to reduce network calls and speedup the process.
 
-The following configurations shows how to add a public key introspection to a route.
+The example below shows how you can add public key introspection to a Route:
 
 ```bash
-curl http://127.0.0.1:9080/apisix/admin/routes/5 -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+curl http://127.0.0.1:9180/apisix/admin/routes/5 -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
 {
   "uri": "/get",
-  "plugins": {
-    "proxy-rewrite": {
-      "scheme": "https"
-    },
-    "openid-connect": {
-      "client_id": "api_six_client_id",
-      "client_secret": "client_secret_code",
-      "discovery": "full_URL_of_the_discovery_endpoint",
+  "plugins":{
+    "openid-connect":{
+      "client_id": "${CLIENT_ID}",
+      "client_secret": "${CLIENT_SECRET}",
+      "discovery": "${DISCOVERY_ENDPOINT}",
       "bearer_only": true,
       "realm": "master",
       "token_signing_alg_values_expected": "RS256",
-      "public_key" : "-----BEGIN PUBLIC KEY-----
-        {public_key}
-        -----END PUBLIC KEY-----"
-}
+      "public_key": "-----BEGIN PUBLIC KEY-----
+      {public_key}
+      -----END PUBLIC KEY-----"
+    }
   },
-  "upstream": {
+  "upstream":{
     "type": "roundrobin",
-    "nodes": {
-      "httpbin.org:443": 1
+    "nodes":{
+      "httpbin.org:443":1
     }
   }
 }'
 ```
 
-In this case, the plugin can only enforce that the access token gets set in the configured request headers.
+In this example, the Plugin can only enforce that the access token should be set in the request headers.
 
-#### Authentication through OIDC Relying Party flow
+### Authentication through OIDC Relying Party flow
 
-When an incoming request does not contain an access token in a header, nor in an appropriate session cookie,
-the plugin can act as an OIDC Relying Party and redirect to the authorization endpoint of the identity provider
-to go through the OIDC Authorization Code flow; see https://openid.net/specs/openid-connect-core-1_0.html#CodeFlowAuth.
-Once the user has authenticated against the identity provider, the plugin will obtain and manage an access token
-and further information from the identity provider on behalf of the user. The information is currently stored
-in a session cookie that the user agent can submit on subsequent requests. The plugin will recognize the cookie
-and use the information therein to avoid having to go through the flow again.
+When an incoming request does not contain an access token in its header nor in an appropriate session cookie, the Plugin can act as an OIDC Relying Party and redirect to the authorization endpoint of the identity provider to go through the [OIDC authorization code flow](https://openid.net/specs/openid-connect-core-1_0.html#CodeFlowAuth).
 
-The following command adds this mode of operation to a route.
+Once the user has authenticated with the identity provider, the Plugin will obtain and manage the access token and further interaction with the identity provider. The access token will be stored in a session cookie.
+
+The example below adds the Plugin with this mode of operation to the Route:
 
 ```bash
-curl http://127.0.0.1:9080/apisix/admin/routes/5 -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+curl http://127.0.0.1:9180/apisix/admin/routes/5 -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
 {
   "uri": "/get",
   "plugins": {
-    "proxy-rewrite": {
-      "scheme": "https"
-    },
     "openid-connect": {
-      "client_id": "api_six_client_id",
-      "client_secret": "client_secret_code",
-      "discovery": "full_URL_of_the_discovery_endpoint",
+      "client_id": "${CLIENT_ID}",
+      "client_secret": "${CLIENT_SECRET}",
+      "discovery": "${DISCOVERY_ENDPOINT}",
       "bearer_only": false,
       "realm": "master"
-}
+    }
   },
   "upstream": {
     "type": "roundrobin",
@@ -214,8 +191,15 @@ curl http://127.0.0.1:9080/apisix/admin/routes/5 -H 'X-API-KEY: edd1c9f034335f13
 }'
 ```
 
-In this case, the plugin can enforce that the access token, the ID token, and the UserInfo object get set in respective configured request headers.
+In this example, the Plugin can enforce that the access token, the ID token, and the UserInfo object to be set in the request headers.
 
 ## Troubleshooting
 
-Check/modify the DNS settings (`conf/config.yaml`) if APISIX cannot resolve/connect to the identity provider.
+1. If APISIX cannot resolve/connect to the identity provider (e.g., Okta, Keycloak, Authing), check/modify the DNS settings in your configuration file (`conf/config.yaml`).
+
+2. If you encounter the error `the error request to the redirect_uri path, but there's no session state found,` please confirm whether the currently accessed URL carries `code` and `state,` and do not directly access `redirect_uri.`
+
+2. If you encounter the error `the error request to the redirect_uri path, but there's no session state found`, please check the `redirect_uri` attribute : APISIX will initiate an authentication request to the identity provider, after the authentication service completes the authentication and authorization logic, it will redirect to the address configured by `redirect_uri` (e.g., `http://127.0.0.1:9080/callback`) with ID Token and AccessToken, and then enter APISIX again and complete the function of token exchange in OIDC logic. The `redirect_uri` attribute needs to meet the following conditions:
+
+- `redirect_uri` needs to be captured by the route where the current APISIX is located. For example, the `uri` of the current route is `/api/v1/*`, `redirect_uri` can be filled in as `/api/v1/callback`;
+- `scheme` and `host` of `redirect_uri` (`scheme:host`) are the values required to access APISIX from the perspective of the identity provider.

@@ -21,18 +21,6 @@ title: 集成服务发现注册中心
 #
 -->
 
-- [摘要](#摘要)
-- [当前支持的注册中心](#当前支持的注册中心)
-- [如何扩展注册中心？](#如何扩展注册中心)
-  - [基本步骤](#基本步骤)
-  - [以 Eureka 举例](#以-eureka-举例)
-    - [实现 eureka.lua](#实现-eurekalua)
-    - [Eureka 与 APISIX 之间数据转换逻辑](#eureka-与-apisix-之间数据转换逻辑)
-- [注册中心配置](#注册中心配置)
-  - [初始化服务发现](#初始化服务发现)
-  - [Eureka 的配置](#eureka-的配置)
-- [upstream 配置](#upstream-配置)
-
 ## 摘要
 
 当业务量发生变化时，需要对上游服务进行扩缩容，或者因服务器硬件故障需要更换服务器。如果网关是通过配置来维护上游服务信息，在微服务架构模式下，其带来的维护成本可想而知。再者因不能及时更新这些信息，也会对业务带来一定的影响，还有人为误操作带来的影响也不可忽视，所以网关非常必要通过服务注册中心动态获取最新的服务实例信息。架构图如下所示：
@@ -44,18 +32,6 @@ title: 集成服务发现注册中心
 3. 当用户通过网关请求服务时，网关从注册中心获取的实例列表中选择一个进行代理；
 
 常见的注册中心：Eureka, Etcd, Consul, Nacos, Zookeeper 等
-
-## 当前支持的注册中心
-
-目前支持 Eureka / Consul 和基于 DNS 的服务注册发现。
-
-基于 DNS 的服务注册发现见 [基于 DNS 的服务支持发现](../../en/latest/discovery/dns.md)。
-
-Consul 的支持见 [基于 Consul 的服务支持发现](../../en/latest/discovery/consul_kv.md)
-
-Nacos 的支持见 [基于 Nacos 的服务支持发现](../../en/latest/discovery/nacos.md)
-
-Eureka 的支持方式见下文。
 
 ## 如何扩展注册中心？
 
@@ -73,7 +49,7 @@ APISIX 要扩展注册中心其实是件非常容易的事情，其基本步骤�
 
 首先，在 `apisix/discovery` 下创建 `eureka` 目录；
 
-其次，在 `apisix/discovery/eureka` 目录中添加 [`init.lua`](../../../apisix/discovery/eureka/init.lua);
+其次，在 `apisix/discovery/eureka` 目录中添加 [`init.lua`](https://github.com/apache/apisix/blob/master/apisix/discovery/init.lua);
 
 然后在 `init.lua` 实现用于初始化的 `init_worker` 函数以及用于获取服务实例节点列表的 `nodes` 函数即可：
 
@@ -100,7 +76,7 @@ return _M
 
 #### Eureka 与 APISIX 之间数据转换逻辑
 
-APISIX 是通过 `upstream.nodes` 来配置上游服务的，所以使用注册中心后，通过注册中心获取服务的所有 node 后，赋值给 `upstream.nodes` 来达到相同的效果。那么 APISIX 是怎么将 Eureka 的数据转成 node 的呢？ 假如从 Eureka 获取如下数据：
+APISIX 是通过 `upstream.nodes` 来配置上游服务的，所以使用注册中心后，通过注册中心获取服务的所有 node 后，赋值给 `upstream.nodes` 来达到相同的效果。那么 APISIX 是怎么将 Eureka 的数据转成 node 的呢？假如从 Eureka 获取如下数据：
 
 ```json
 {
@@ -142,10 +118,10 @@ APISIX 是通过 `upstream.nodes` 来配置上游服务的，所以使用注册�
 
 解析 instance 数据步骤：
 
-1. 首先要选择状态为 “UP” 的实例： overriddenStatus 值不为 "UNKNOWN" 以 overriddenStatus 为准，否则以 status 的值为准；
+1. 首先要选择状态为“UP”的实例：overriddenStatus 值不为 "UNKNOWN" 以 overriddenStatus 为准，否则以 status 的值为准；
 2. IP 地址：以 ipAddr 的值为 IP; 并且必须是 IPv4 或 IPv6 格式的；
 3. 端口：端口取值规则是，如果 port["@enabled"] 等于 "true" 那么使用 port["\$"] 的值；如果 securePort["@enabled"] 等于 "true" 那么使用 securePort["$"] 的值；
-4. 权重：权重取值顺序是，先判断 `metadata.weight` 是否有值，如果没有，则取配置中的 `eureka.weight` 的值, 如果还没有，则取默认值`100`；
+4. 权重：权重取值顺序是，先判断 `metadata.weight` 是否有值，如果没有，则取配置中的 `eureka.weight` 的值，如果还没有，则取默认值`100`；
 
 这个例子转成 APISIX nodes 的结果如下：
 
@@ -175,7 +151,7 @@ discovery:
 
 此名称要与 `apisix/discovery/` 目录中实现对应注册中心的文件名保持一致。
 
-现已支持注册中心有：Eureka 。
+现已支持注册中心有：Eureka。
 
 ### Eureka 的配置
 
@@ -188,12 +164,12 @@ discovery:
       - "http://${username}:${password}@${eureka_host1}:${eureka_port1}"
       - "http://${username}:${password}@${eureka_host2}:${eureka_port2}"
     prefix: "/eureka/"
-    fetch_interval: 30 # 从 eureka 中拉取数据的时间间隔，默认30秒
+    fetch_interval: 30 # 从 eureka 中拉取数据的时间间隔，默认 30 秒
     weight: 100 # default weight for node
     timeout:
-      connect: 2000 # 连接 eureka 的超时时间，默认2000ms
-      send: 2000 # 向 eureka 发送数据的超时时间，默认2000ms
-      read: 5000 # 从 eureka 读数据的超时时间，默认5000ms
+      connect: 2000 # 连接 eureka 的超时时间，默认 2000ms
+      send: 2000 # 向 eureka 发送数据的超时时间，默认 2000ms
+      read: 5000 # 从 eureka 读数据的超时时间，默认 5000ms
 ```
 
 通过 `discovery.eureka.host` 配置 eureka 的服务器地址。
@@ -210,10 +186,12 @@ discovery:
 
 ## upstream 配置
 
+### 七层
+
 APISIX 是通过 `upstream.discovery_type` 选择使用的服务发现，`upstream.service_name` 与注册中心的服务名进行关联。下面是将 URL 为 "/user/\*" 的请求路由到注册中心名为 "USER-SERVICE" 的服务上例子：
 
 ```shell
-$ curl http://127.0.0.1:9080/apisix/admin/routes/1 -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -i -d '
+$ curl http://127.0.0.1:9180/apisix/admin/routes/1 -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -i -d '
 {
     "uri": "/user/*",
     "upstream": {
@@ -230,13 +208,13 @@ Transfer-Encoding: chunked
 Connection: keep-alive
 Server: APISIX web server
 
-{"node":{"value":{"uri":"\/user\/*","upstream": {"service_name": "USER-SERVICE", "type": "roundrobin", "discovery_type": "eureka"}},"createdIndex":61925,"key":"\/apisix\/routes\/1","modifiedIndex":61925},"action":"create"}
+{"node":{"value":{"uri":"\/user\/*","upstream": {"service_name": "USER-SERVICE", "type": "roundrobin", "discovery_type": "eureka"}},"createdIndex":61925,"key":"\/apisix\/routes\/1","modifiedIndex":61925}}
 ```
 
 因为上游的接口 URL 可能会有冲突，通常会在网关通过前缀来进行区分：
 
 ```shell
-$ curl http://127.0.0.1:9080/apisix/admin/routes/1 -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -i -d '
+$ curl http://127.0.0.1:9180/apisix/admin/routes/1 -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -i -d '
 {
     "uri": "/a/*",
     "plugins": {
@@ -251,7 +229,7 @@ $ curl http://127.0.0.1:9080/apisix/admin/routes/1 -H 'X-API-KEY: edd1c9f034335f
     }
 }'
 
-$ curl http://127.0.0.1:9080/apisix/admin/routes/2 -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -i -d '
+$ curl http://127.0.0.1:9180/apisix/admin/routes/2 -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -i -d '
 {
     "uri": "/b/*",
     "plugins": {
@@ -270,3 +248,33 @@ $ curl http://127.0.0.1:9080/apisix/admin/routes/2 -H 'X-API-KEY: edd1c9f034335f
 假如 A-SERVICE 和 B-SERVICE 都提供了一个 `/test` 的接口，通过上面的配置，可以通过 `/a/test` 访问 A-SERVICE 的 `/test` 接口，通过 `/b/test` 访问 B-SERVICE 的 `/test` 接口。
 
 **注意**：配置 `upstream.service_name` 后 `upstream.nodes` 将不再生效，而是使用从注册中心的数据来替换，即使注册中心的数据是空的。
+
+### 四层
+
+eureka 服务发现也支持在四层中使用，配置方式与七层的类似。
+
+```shell
+$ curl http://127.0.0.1:9180/apisix/admin/stream_routes/1 -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -i -d '
+{
+    "remote_addr": "127.0.0.1",
+    "upstream": {
+        "scheme": "tcp",
+        "discovery_type": "eureka",
+        "service_name": "APISIX-EUREKA",
+        "type": "roundrobin"
+    }
+}'
+HTTP/1.1 200 OK
+Date: Fri, 30 Dec 2022 03:52:19 GMT
+Content-Type: application/json
+Transfer-Encoding: chunked
+Connection: keep-alive
+Server: APISIX/3.0.0
+Access-Control-Allow-Origin: *
+Access-Control-Allow-Credentials: true
+Access-Control-Expose-Headers: *
+Access-Control-Max-Age: 3600
+X-API-VERSION: v3
+
+{"key":"\/apisix\/stream_routes\/1","value":{"remote_addr":"127.0.0.1","upstream":{"hash_on":"vars","type":"roundrobin","discovery_type":"eureka","scheme":"tcp","pass_host":"pass","service_name":"APISIX-EUREKA"},"id":"1","create_time":1672106762,"update_time":1672372339}}
+```

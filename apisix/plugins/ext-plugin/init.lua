@@ -24,11 +24,14 @@ local http_req_call_resp = require("A6.HTTPReqCall.Resp")
 local http_req_call_action = require("A6.HTTPReqCall.Action")
 local http_req_call_stop = require("A6.HTTPReqCall.Stop")
 local http_req_call_rewrite = require("A6.HTTPReqCall.Rewrite")
+local http_resp_call_req = require("A6.HTTPRespCall.Req")
+local http_resp_call_resp = require("A6.HTTPRespCall.Resp")
 local extra_info = require("A6.ExtraInfo.Info")
 local extra_info_req = require("A6.ExtraInfo.Req")
 local extra_info_var = require("A6.ExtraInfo.Var")
 local extra_info_resp = require("A6.ExtraInfo.Resp")
 local extra_info_reqbody = require("A6.ExtraInfo.ReqBody")
+local extra_info_respbody = require("A6.ExtraInfo.RespBody")
 local text_entry = require("A6.TextEntry")
 local err_resp = require("A6.Err.Resp")
 local err_code = require("A6.Err.Code")
@@ -65,6 +68,18 @@ local type = type
 
 
 local events_list
+local exclude_resp_header = {
+    ["connection"] = true,
+    ["content-length"] = true,
+    ["transfer-encoding"] = true,
+    ["location"] = true,
+    ["server"] = true,
+    ["www-authenticate"] = true,
+    ["content-encoding"] = true,
+    ["content-type"] = true,
+    ["content-location"] = true,
+    ["content-language"] = true,
+}
 
 local function new_lrucache()
     return core.lrucache.new({
@@ -99,6 +114,7 @@ local schema = {
             },
             minItems = 1,
         },
+        allow_degradation = {type = "boolean", default = false}
     },
 }
 
@@ -289,7 +305,31 @@ local function handle_extra_info(ctx, input)
         if err then
             core.log.error("failed to read request body: ", err)
         end
+    elseif info_type == extra_info.RespBody then
+        local ext_res = ctx.runner_ext_response
+        if ext_res then
+            local info = req:Info()
+            local respbody_req = extra_info_respbody.New()
+            respbody_req:Init(info.byte, info.pos)
 
+            local chunks = {}
+            local err = helper.response_reader(ext_res.body_reader, function (chunk, chunks)
+                -- When the upstream response is chunked type,
+                -- we will receive the complete response body
+                -- before sending it to the runner program
+                -- to reduce the number of RPC calls.
+                core.table.insert_tail(chunks, chunk)
+            end, chunks)
+            if err then
+                -- TODO: send RPC_ERROR to runner
+                core.log.error(err)
+            else
+                res = core.table.concat(chunks)
+                ctx.runner_ext_response_body = chunks
+            end
+        else
+            core.log.error("failed to read response body: not exits")
+        end
     else
         return nil, "unsupported info type: " .. info_type
     end
@@ -564,9 +604,16 @@ local rpc_handlers = {
 
             local len = stop:HeadersLength()
             if len > 0 then
+                local stop_resp_headers = {}
                 for i = 1, len do
                     local entry = stop:Headers(i)
-                    core.response.set_header(entry:Name(), entry:Value())
+                    local name = str_lower(entry:Name())
+                    if stop_resp_headers[name] == nil then
+                        core.response.set_header(name, entry:Value())
+                        stop_resp_headers[name] = true
+                    else
+                        core.response.add_header(name, entry:Value())
+                    end
                 end
             end
 
@@ -585,8 +632,6 @@ local rpc_handlers = {
         end
 
         if action_type == http_req_call_action.Rewrite then
-            ctx.request_rewritten = constants.REWRITTEN_BY_EXT_PLUGIN
-
             local action = call_resp:Action()
             local rewrite = http_req_call_rewrite.New()
             rewrite:Init(action.bytes, action.pos)
@@ -606,6 +651,23 @@ local rpc_handlers = {
 
                     if str_lower(name) == "host" then
                         var.upstream_host = entry:Value()
+                    end
+                end
+            end
+
+            local len = rewrite:RespHeadersLength()
+            if len > 0 then
+                local rewrite_resp_headers = {}
+                for i = 1, len do
+                    local entry = rewrite:RespHeaders(i)
+                    local name = str_lower(entry:Name())
+                    if exclude_resp_header[name] == nil then
+                        if rewrite_resp_headers[name] == nil then
+                            core.response.set_header(name, entry:Value())
+                            rewrite_resp_headers[name] = true
+                        else
+                            core.response.add_header(name, entry:Value())
+                        end
                     end
                 end
             end
@@ -645,6 +707,122 @@ local rpc_handlers = {
 
         return true
     end,
+    nil, -- ignore RPC_EXTRA_INFO, already processed during RPC_HTTP_REQ_CALL interaction
+    function (conf, ctx, sock, entry)
+        local lrucache_id = core.lrucache.plugin_ctx_id(ctx, entry)
+        local token, err = core.lrucache.plugin_ctx(lrucache, ctx, entry, rpc_call,
+                                                    constants.RPC_PREPARE_CONF, conf, ctx,
+                                                    lrucache_id)
+        if not token then
+            return nil, err
+        end
+
+        builder:Clear()
+        local var = ctx.var
+
+        local res = ctx.runner_ext_response
+        local textEntries = {}
+        local hdrs = res.headers
+        for key, val in pairs(hdrs) do
+            local ty = type(val)
+            if ty == "table" then
+                for _, v in ipairs(val) do
+                    core.table.insert(textEntries, build_headers(var, builder, key, v))
+                end
+            else
+                core.table.insert(textEntries, build_headers(var, builder, key, val))
+            end
+        end
+        local len = #textEntries
+        http_resp_call_req.StartHeadersVector(builder, len)
+        for i = len, 1, -1 do
+            builder:PrependUOffsetTRelative(textEntries[i])
+        end
+        local hdrs_vec = builder:EndVector(len)
+
+        local id = generate_id()
+        local status = res.status
+
+        http_resp_call_req.Start(builder)
+        http_resp_call_req.AddId(builder, id)
+        http_resp_call_req.AddStatus(builder, status)
+        http_resp_call_req.AddConfToken(builder, token)
+        http_resp_call_req.AddHeaders(builder, hdrs_vec)
+
+        local req = http_resp_call_req.End(builder)
+        builder:Finish(req)
+
+        local ok, err = send(sock, constants.RPC_HTTP_RESP_CALL, builder:Output())
+        if not ok then
+            return nil, "failed to send RPC_HTTP_RESP_CALL: " .. err
+        end
+
+        local ty, resp
+        while true do
+            ty, resp = receive(sock)
+            if ty == nil then
+                return nil, "failed to receive RPC_HTTP_REQ_CALL: " .. resp
+            end
+
+            if ty ~= constants.RPC_EXTRA_INFO then
+                break
+            end
+
+            local out, err = handle_extra_info(ctx, resp)
+            if not out then
+                return nil, "failed to handle RPC_EXTRA_INFO: " .. err
+            end
+
+            local ok, err = send(sock, constants.RPC_EXTRA_INFO, out)
+            if not ok then
+                return nil, "failed to reply RPC_EXTRA_INFO: " .. err
+            end
+        end
+
+        if ty ~= constants.RPC_HTTP_RESP_CALL then
+            return nil, "failed to receive RPC_HTTP_RESP_CALL: unexpected type " .. ty
+        end
+
+        local buf = flatbuffers.binaryArray.New(resp)
+        local call_resp = http_resp_call_resp.GetRootAsResp(buf, 0)
+        local len = call_resp:HeadersLength()
+        if len > 0 then
+            local resp_headers = {}
+            for i = 1, len do
+                local entry = call_resp:Headers(i)
+                local name = str_lower(entry:Name())
+                if resp_headers[name] == nil then
+                    core.response.set_header(name, entry:Value())
+                    resp_headers[name] = true
+                else
+                    core.response.add_header(name, entry:Value())
+                end
+            end
+        else
+            -- Filter out origin headeres
+            for k, v in pairs(res.headers) do
+                if not exclude_resp_header[str_lower(k)] then
+                    core.response.set_header(k, v)
+                end
+            end
+        end
+
+        local body
+        local len = call_resp:BodyLength()
+        if len > 0 then
+            -- TODO: support empty body
+            body = call_resp:BodyAsString()
+        end
+        local code = call_resp:Status()
+        core.log.info("recv resp, code: ", code, " body: ", body, " len: ", len)
+
+        if code == 0 then
+            -- runner changes body only, we should set code.
+            code = body and res.status or nil
+        end
+
+        return true, nil, code, body
+    end
 }
 
 
@@ -684,12 +862,13 @@ local function recreate_lrucache()
 end
 
 
-function _M.communicate(conf, ctx, plugin_name)
+function _M.communicate(conf, ctx, plugin_name, rpc_cmd)
     local ok, err, code, body
     local tries = 0
+    local ty = rpc_cmd and rpc_cmd or constants.RPC_HTTP_REQ_CALL
     while tries < 3 do
         tries = tries + 1
-        ok, err, code, body = rpc_call(constants.RPC_HTTP_REQ_CALL, conf, ctx, plugin_name)
+        ok, err, code, body = rpc_call(ty, conf, ctx, plugin_name)
         if ok then
             if code then
                 return code, body
@@ -700,6 +879,10 @@ function _M.communicate(conf, ctx, plugin_name)
 
         if not core.string.find(err, "conf token not found") then
             core.log.error(err)
+            if conf.allow_degradation then
+                core.log.warn("Plugin Runner is wrong, allow degradation")
+                return
+            end
             return 503
         end
 
@@ -708,6 +891,10 @@ function _M.communicate(conf, ctx, plugin_name)
     end
 
     core.log.error(err)
+    if conf.allow_degradation then
+        core.log.warn("Plugin Runner is wrong after " .. tries .. " times retry, allow degradation")
+        return
+    end
     return 503
 end
 

@@ -15,9 +15,19 @@
 -- limitations under the License.
 --
 
+--- Get or set the information of the client request.
+--
+-- @module core.request
+
 local lfs = require("lfs")
 local log = require("apisix.core.log")
 local io = require("apisix.core.io")
+local req_add_header
+if ngx.config.subsystem == "http" then
+    local ngx_req = require "ngx.req"
+    req_add_header = ngx_req.add_header
+end
+local is_apisix_or, a6_request = pcall(require, "resty.apisix.request")
 local ngx = ngx
 local get_headers = ngx.req.get_headers
 local clear_header = ngx.req.clear_header
@@ -32,6 +42,8 @@ local req_get_body_file = ngx.req.get_body_file
 local req_get_post_args = ngx.req.get_post_args
 local req_get_uri_args = ngx.req.get_uri_args
 local req_set_uri_args = ngx.req.set_uri_args
+local table_insert = table.insert
+local req_set_header = ngx.req.set_header
 
 
 local _M = {}
@@ -41,9 +53,19 @@ local function _headers(ctx)
     if not ctx then
         ctx = ngx.ctx.api_ctx
     end
+
+    if not is_apisix_or then
+        return get_headers(0)
+    end
+
+    if a6_request.is_request_header_set() then
+        a6_request.clear_request_header()
+        ctx.headers = get_headers(0)
+    end
+
     local headers = ctx.headers
     if not headers then
-        headers = get_headers()
+        headers = get_headers(0)
         ctx.headers = headers
     end
 
@@ -60,9 +82,27 @@ local function _validate_header_name(name)
     return name
 end
 
+---
+-- Returns all headers of the current request.
+-- The name and value of the header in return table is in lower case.
+--
+-- @function core.request.headers
+-- @tparam table ctx The context of the current request.
+-- @treturn table all headers
+-- @usage
+-- local headers = core.request.headers(ctx)
 _M.headers = _headers
 
-
+---
+-- Returns the value of the header with the specified name.
+--
+-- @function core.request.header
+-- @tparam table ctx The context of the current request.
+-- @tparam string name The header name, example: "Content-Type".
+-- @treturn string|nil the value of the header, or nil if not found.
+-- @usage
+-- -- You can use upper case for header "Content-Type" here to get the value.
+-- local content_type = core.request.header(ctx, "Content-Type") -- "application/json"
 function _M.header(ctx, name)
     if not ctx then
         ctx = ngx.ctx.api_ctx
@@ -70,8 +110,7 @@ function _M.header(ctx, name)
     return _headers(ctx)[name]
 end
 
-
-function _M.set_header(ctx, header_name, header_value)
+local function modify_header(ctx, header_name, header_value, override)
     if type(ctx) == "string" then
         -- It would be simpler to keep compatibility if we put 'ctx'
         -- after 'header_value', but the style is too ugly!
@@ -79,7 +118,11 @@ function _M.set_header(ctx, header_name, header_value)
         header_name = ctx
         ctx = nil
 
-        log.warn("DEPRECATED: use set_header(ctx, header_name, header_value) instead")
+        if override then
+            log.warn("DEPRECATED: use set_header(ctx, header_name, header_value) instead")
+        else
+            log.warn("DEPRECATED: use add_header(ctx, header_name, header_value) instead")
+        end
     end
 
     local err
@@ -88,13 +131,43 @@ function _M.set_header(ctx, header_name, header_value)
         error(err)
     end
 
-    if ctx and ctx.headers then
-        ctx.headers[header_name] = header_value
+    local changed = false
+    if is_apisix_or then
+        changed = a6_request.is_request_header_set()
     end
 
-    ngx.req.set_header(header_name, header_value)
+    if override then
+        req_set_header(header_name, header_value)
+    else
+        req_add_header(header_name, header_value)
+    end
+
+    if is_apisix_or and not changed then
+        -- if the headers are not changed before,
+        -- we can only update part of the cache instead of invalidating the whole
+        a6_request.clear_request_header()
+        if ctx and ctx.headers then
+            if override or not ctx.headers[header_name] then
+                ctx.headers[header_name] = header_value
+            else
+                local values = ctx.headers[header_name]
+                if type(values) == "table" then
+                    table_insert(values, header_value)
+                else
+                    ctx.headers[header_name] = {values, header_value}
+                end
+            end
+        end
+    end
 end
 
+function _M.set_header(ctx, header_name, header_value)
+    modify_header(ctx, header_name, header_value, true)
+end
+
+function _M.add_header(ctx, header_name, header_value)
+    modify_header(ctx, header_name, header_value, false)
+end
 
 -- return the remote address of client which directly connecting to APISIX.
 -- so if there is a load balancer between downstream client and APISIX,
@@ -269,18 +342,7 @@ function _M.get_port(ctx)
 end
 
 
-function _M.get_path(ctx)
-    if not ctx then
-        ctx = ngx.ctx.api_ctx
-    end
-
-    return ctx.var.uri or ''
-end
-
-
-function _M.get_http_version()
-    return ngx.req.http_version()
-end
+_M.get_http_version = ngx.req.http_version
 
 
 _M.get_method = ngx.req.get_method

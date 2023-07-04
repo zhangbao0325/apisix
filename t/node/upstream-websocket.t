@@ -55,8 +55,6 @@ __DATA__
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -81,8 +79,6 @@ Sec-WebSocket-Protocol: chat
 --- raw_response_headers_like: ^HTTP/1.1 101 Switching Protocols\r\n
 --- response_body_like eval
 qr/hello/
---- no_error_log
-[error]
 --- error_code: 101
 
 
@@ -113,8 +109,6 @@ qr/hello/
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -142,8 +136,6 @@ passed
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -168,8 +160,6 @@ Sec-WebSocket-Protocol: chat
 --- raw_response_headers_like: ^HTTP/1.1 101 Switching Protocols\r\n
 --- response_body_like eval
 qr/hello/
---- no_error_log
-[error]
 --- error_code: 101
 
 
@@ -198,8 +188,6 @@ qr/hello/
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -254,7 +242,7 @@ qr/failed to new websocket: bad "upgrade" request header: nil/
             local ssl_key =  t.read_file("t/certs/apisix.key")
             local data = {cert = ssl_cert, key = ssl_key, sni = "127.0.0.1"}
 
-            local code, body = t.test('/apisix/admin/ssl/1',
+            local code, body = t.test('/apisix/admin/ssls/1',
                 ngx.HTTP_PUT,
                 core.json.encode(data)
             )
@@ -272,8 +260,6 @@ qr/failed to new websocket: bad "upgrade" request header: nil/
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -302,7 +288,5 @@ passed
     }
 --- request
 GET /t
---- no_error_log
-[error]
 --- response_body
 received: hello (text)

@@ -58,8 +58,6 @@ __DATA__
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -93,8 +91,6 @@ passed
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -104,8 +100,6 @@ GET /not_found
 --- error_code: 404
 --- response_body
 {"error_msg":"404 Route Not Found"}
---- no_error_log
-[error]
 
 
 
@@ -117,8 +111,6 @@ X-RateLimit-Limit: 2
 X-RateLimit-Remaining: 1
 --- response_body eval
 qr/1981/
---- no_error_log
-[error]
 
 
 
@@ -147,8 +139,6 @@ qr/1981/
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -160,8 +150,6 @@ X-RateLimit-Limit: 2
 X-RateLimit-Remaining: 1
 --- response_body eval
 qr/1980/
---- no_error_log
-[error]
 
 
 
@@ -180,7 +168,9 @@ qr/1980/
                             "time_window": 60,
                             "rejected_code": 503,
                             "key": "remote_addr",
-                            "disable": true
+                            "_meta": {
+                                "disable": true
+                            }
                         }
                     },
                     "uri": "/server_port",
@@ -198,8 +188,6 @@ qr/1980/
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -210,8 +198,6 @@ GET /server_port
 qr/X-RateLimit-Limit/
 --- response_body eval
 qr/1980/
---- no_error_log
-[error]
 
 
 
@@ -249,9 +235,10 @@ qr/merge_service_route.*"time_window":60/]
                 ngx.HTTP_PUT,
                 [[{
                     "upstream": {
+                        "scheme": "http",
                         "type": "roundrobin",
                         "nodes": {
-                            "httpbin.org:443": 1
+                            "test.com:1980": 1
                         }
                     }
                 }]]
@@ -267,8 +254,6 @@ qr/merge_service_route.*"time_window":60/]
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -280,11 +265,11 @@ passed
             local code, body = t('/apisix/admin/routes/1',
                 ngx.HTTP_PUT,
                 [[{
-                    "uri": "/get",
-                    "host": "httpbin.org",
+                    "uri": "/fake",
+                    "host": "test.com",
                     "plugins": {
                         "proxy-rewrite": {
-                            "scheme": "https"
+                            "uri": "/echo"
                         }
                     },
                     "service_id": "1"
@@ -301,32 +286,25 @@ passed
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
 === TEST 12: hit route
 --- request
-GET /get
+GET /fake
 --- more_headers
-host: httpbin.org
---- response_body eval
-qr/"Host": "httpbin.org"/
---- no_error_log
-[error]
---- timeout: 5
+host: test.com
+--- response_headers
+host: test.com
 
 
 
 === TEST 13: not hit route
 --- request
-GET /get
+GET /fake
 --- more_headers
-host: httpbin.orgxxx
+host: test.comxxx
 --- error_code: 404
---- no_error_log
-[error]
 
 
 
@@ -357,8 +335,6 @@ host: httpbin.orgxxx
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -384,8 +360,6 @@ passed
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -397,8 +371,6 @@ uri: /uri
 connection: close
 host: localhost
 x-real-ip: 127.0.0.1
---- no_error_log
-[error]
 --- error_log
 enabled websocket for route: 33
 
@@ -422,5 +394,118 @@ enabled websocket for route: 33
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
+
+
+
+=== TEST 18: labels exist if only route
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin").test
+            code, body = t('/apisix/admin/routes/1',
+                ngx.HTTP_PUT,
+                [[{
+                    "upstream": {
+                        "nodes": {
+                            "127.0.0.1:1980": 1
+                        },
+                        "type": "roundrobin"
+                    },
+                    "plugins": {
+                        "serverless-pre-function": {
+                            "phase": "rewrite",
+                            "functions" : ["return function(conf, ctx)
+                                        local core = require(\"apisix.core\");
+                                        ngx.say(core.json.encode(ctx.matched_route.value.labels));
+                                        end"]
+                        }
+                    },
+                    "labels": {
+                        "version": "v2"
+                    },
+                    "uri": "/hello"
+                }]]
+            )
+
+            if code >= 300 then
+                ngx.status = code
+            end
+            ngx.say(body)
+        }
+    }
+--- request
+GET /t
+--- response_body
+passed
+
+
+
+=== TEST 19: hit routes
+--- request
+GET /hello
+--- response_body
+{"version":"v2"}
+
+
+
+=== TEST 20: labels exist if merge route and service
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin").test
+            local code, body = t('/apisix/admin/services/1',
+                ngx.HTTP_PUT,
+                [[{
+                    "upstream": {
+                        "nodes": {
+                            "127.0.0.1:1980": 1
+                        },
+                        "type": "roundrobin"
+                    }
+                }]]
+            )
+
+            if code >= 300 then
+                ngx.status = code
+            end
+
+            ngx.sleep(0.6) -- wait for sync
+
+            code, body = t('/apisix/admin/routes/1',
+                ngx.HTTP_PUT,
+                [[{
+                    "plugins": {
+                        "serverless-pre-function": {
+                            "phase": "rewrite",
+                            "functions" : ["return function(conf, ctx)
+                                        local core = require(\"apisix.core\");
+                                        ngx.say(core.json.encode(ctx.matched_route.value.labels));
+                                        end"]
+                        }
+                    },
+                    "labels": {
+                        "version": "v2"
+                    },
+                    "uri": "/hello",
+                    "service_id": 1
+                }]]
+            )
+
+            if code >= 300 then
+                ngx.status = code
+            end
+            ngx.say(body)
+        }
+    }
+--- request
+GET /t
+--- response_body
+passed
+
+
+
+=== TEST 21: hit routes
+--- request
+GET /hello
+--- response_body
+{"version":"v2"}

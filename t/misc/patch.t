@@ -29,10 +29,6 @@ add_block_preprocessor(sub {
     if (!$block->request) {
         $block->set_value("request", "GET /t");
     }
-
-    if (!defined $block->error_log && !defined $block->no_error_log) {
-        $block->set_value("no_error_log", "[error]");
-    }
 });
 
 run_tests;
@@ -147,8 +143,6 @@ apisix:
             ngx.say("ok")
         }
     }
---- request
-GET /t
 --- response_body
 ok
 
@@ -181,8 +175,6 @@ apisix:
 --- stream_request eval
 m
 --- stream_response: ok
---- no_error_log
-[error]
 
 
 

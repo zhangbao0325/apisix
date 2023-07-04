@@ -20,6 +20,14 @@ repeat_each(2);
 no_long_string();
 no_root_location();
 
+add_block_preprocessor(sub {
+    my ($block) = @_;
+
+    if (!$block->request) {
+        $block->set_value("request", "GET /t");
+    }
+});
+
 run_tests;
 
 __DATA__
@@ -37,13 +45,9 @@ __DATA__
             ngx.say("data: ", data.test)
         }
     }
---- request
-GET /t
 --- response_body
 encode: {"test":"test"}
 data: test
---- no_error_log
-[error]
 
 
 
@@ -61,8 +65,6 @@ data: test
             ngx.log(ngx.ERR, "data2 val: ", data2)
         }
     }
---- request
-GET /t
 --- response_body
 delay encode: true
 data1 type: table
@@ -82,12 +84,8 @@ data2 val: {"test":"test2"}
             ngx.say("encode: ", data)
         }
     }
---- request
-GET /t
 --- response_body_like eval
 qr/\{("test":"test","fun":"function: 0x[0-9a-f]+"|"fun":"function: 0x[0-9a-f]+","test":"test")}/
---- no_error_log
-[error]
 
 
 
@@ -103,12 +101,8 @@ qr/\{("test":"test","fun":"function: 0x[0-9a-f]+"|"fun":"function: 0x[0-9a-f]+",
             ngx.say("encode: ", json_data)
         }
     }
---- request
-GET /t
 --- response_body_like eval
 qr/encode: \{"test":"cdata\<char \*\[1\]>: 0x[0-9a-f]+"\}/
---- no_error_log
-[error]
 
 
 
@@ -126,9 +120,41 @@ qr/encode: \{"test":"cdata\<char \*\[1\]>: 0x[0-9a-f]+"\}/
             ngx.say("encode: ", json_data)
         }
     }
---- request
-GET /t
 --- response_body eval
 qr/\{"b":\{"a":\{"b":"table: 0x[\w]+"\}\}\}/
---- no_error_log
-[error]
+
+
+
+=== TEST 6: decode/encode empty array
+--- config
+    location /t {
+        content_by_lua_block {
+            local core = require("apisix.core")
+            local data = core.json.decode('{"arr":[]}')
+            ngx.say(core.json.encode(data))
+            local data = core.json.decode('{"obj":{}}')
+            ngx.say(core.json.encode(data))
+        }
+    }
+--- response_body
+{"arr":[]}
+{"obj":{}}
+
+
+
+=== TEST 7: encode slash without escape
+--- config
+    location /t {
+        content_by_lua_block {
+            local core = require("apisix.core")
+            local json_data = core.json.encode({test="/test"})
+
+            ngx.say("encode: ", json_data)
+
+            local data = core.json.decode(json_data)
+            ngx.say("data: ", data.test)
+        }
+    }
+--- response_body
+encode: {"test":"/test"}
+data: /test

@@ -33,16 +33,12 @@ __DATA__
             local t = require("lib.test_admin").test
             local code, body = t('/apisix/admin/services/1',
                 ngx.HTTP_PUT,
-                {},
-                [[{
-                    "node": {
-                        "value": {"id":"1"}
-                    },
-                    "action": "set"
-                }]]
+                '{}'
                 )
 
-            ngx.status = code
+            if code >= 300 then
+                ngx.status = code
+            end
             ngx.say(body)
         }
     }
@@ -50,8 +46,6 @@ __DATA__
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -85,8 +79,6 @@ passed
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -95,5 +87,3 @@ passed
 GET /hello
 --- response_body
 hello world
---- no_error_log
-[error]

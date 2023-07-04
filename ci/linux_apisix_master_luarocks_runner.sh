@@ -19,11 +19,13 @@
 . ./ci/common.sh
 
 do_install() {
+    linux_get_dependencies
+
     export_or_prefix
 
-    ./utils/linux-install-openresty.sh
+    ./ci/linux-install-openresty.sh
     ./utils/linux-install-luarocks.sh
-    ./utils/linux-install-etcd-client.sh
+    ./ci/linux-install-etcd-client.sh
 }
 
 script() {
@@ -36,10 +38,11 @@ script() {
     mkdir tmp && cd tmp
     cp -r ../utils ./
 
-    git config --global url.https://github.com/.insteadOf git://github.com/
+    # install rust
+    install_rust
 
     # install APISIX by luarocks
-    sudo luarocks install $APISIX_MAIN > build.log 2>&1 || (cat build.log && exit 1)
+    luarocks install $APISIX_MAIN > build.log 2>&1 || (cat build.log && exit 1)
     cp ../bin/apisix /usr/local/bin/apisix
 
     # show install files
@@ -55,7 +58,7 @@ script() {
     # apisix cli test
     # todo: need a more stable way
 
-    cat /usr/local/apisix/logs/error.log | grep '\[error\]' > /tmp/error.log | true
+    grep '\[error\]' /usr/local/apisix/logs/error.log > /tmp/error.log | true
     if [ -s /tmp/error.log ]; then
         echo "=====found error log====="
         cat /usr/local/apisix/logs/error.log

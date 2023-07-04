@@ -53,7 +53,7 @@ The result of Flame Graph:
 And if you want to run the benchmark test in your machine, you should run another Nginx to listen 80 port.
 
 ```shell
-curl http://127.0.0.1:9080/apisix/admin/routes/1 -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+curl http://127.0.0.1:9180/apisix/admin/routes/1 -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
 {
     "methods": ["GET"],
     "uri": "/hello",
@@ -98,7 +98,7 @@ The result of Flame Graph:
 And if you want to run the benchmark test in your machine, you should run another Nginx to listen 80 port.
 
 ```shell
-curl http://127.0.0.1:9080/apisix/admin/routes/1 -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+curl http://127.0.0.1:9180/apisix/admin/routes/1 -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
 {
     "methods": ["GET"],
     "uri": "/hello",
@@ -126,3 +126,17 @@ then run wrk:
 ```shell
 wrk -d 60 --latency http://127.0.0.1:9080/hello
 ```
+
+For more reference on how to run the benchmark test, you can see this [PR](https://github.com/apache/apisix/pull/6136) and this [script](https://gist.github.com/membphis/137db97a4bf64d3653aa42f3e016bd01).
+
+:::tip
+
+If you want to run the benchmark with a large number of connections, You may have to update the **keepalive** config in the [conf/config-default.yaml](https://github.com/apache/apisix/blob/master/conf/config-default.yaml#L242). Connections exceeding this number will become short connections. You can run the following command to test the benchmark with a large number of connections:
+
+```bash
+wrk -t200 -c5000 -d30s http://127.0.0.1:9080/hello
+```
+
+For more details, you can refer to [Module ngx_http_upstream_module](http://nginx.org/en/docs/http/ngx_http_upstream_module.html).
+
+:::

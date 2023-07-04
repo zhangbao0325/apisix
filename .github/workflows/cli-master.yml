@@ -16,6 +16,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.run_number || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   build:
     strategy:
@@ -23,19 +26,19 @@ jobs:
       matrix:
         job_name:
           - linux_apisix_master_luarocks
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     timeout-minutes: 15
     env:
       OPENRESTY_VERSION: default
 
     steps:
       - name: Check out code
-        uses: actions/checkout@v2.4.0
+        uses: actions/checkout@v3.2.0
         with:
           submodules: recursive
 
       - name: Cache deps
-        uses: actions/cache@v2.1.7
+        uses: actions/cache@v3
         env:
           cache-name: cache-deps
         with:
@@ -45,9 +48,6 @@ jobs:
       - name: Linux launch common services
         run: |
           project_compose_ci=ci/pod/docker-compose.common.yml make ci-env-up
-
-      - name: Linux Get dependencies
-        run: sudo apt install -y cpanminus build-essential libncurses5-dev libreadline-dev libssl-dev perl libpcre3 libpcre3-dev libldap2-dev
 
       - name: Linux Install
         run: |

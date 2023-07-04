@@ -1,5 +1,12 @@
 ---
 title: proxy-rewrite
+keywords:
+  - Apache APISIX
+  - API Gateway
+  - Plugin
+  - Proxy Rewrite
+  - proxy-rewrite
+description: This document contains information about the Apache APISIX proxy-rewrite Plugin.
 ---
 
 <!--
@@ -21,47 +28,55 @@ title: proxy-rewrite
 #
 -->
 
-## Summary
+## Description
 
-- [**Name**](#name)
-- [**Attributes**](#attributes)
-- [**How To Enable**](#how-to-enable)
-- [**Test Plugin**](#test-plugin)
-- [**Disable Plugin**](#disable-plugin)
-
-## Name
-
-The `proxy-rewrite` is an upstream proxy information rewriting plugin, which supports the rewriting of information such as `scheme`, `uri`, and `host`.
+The `proxy-rewrite` Plugin rewrites Upstream proxy information such as `scheme`, `uri` and `host`.
 
 ## Attributes
 
-| Name      | Type          | Requirement | Default | Valid             | Description                                                  |
-| --------- | ------------- | ----------- | ------- | ----------------- | ------------------------------------------------------------ |
-| scheme    | string        | optional    | "http"  | ["http", "https"] | Upstream new `schema` forwarding protocol. This option is deprecated. It's recommended to set the proxy `scheme` in the Upstream object's `scheme` field instead.|
-| uri       | string        | optional    |         |                   | Upstream new `uri` forwarding address. Supports the use of [Nginx variables](https://nginx.org/en/docs/http/ngx_http_core_module.html). Variables must start with `$`, such as `$arg_name`. |
-| method    | string        | optional    |         | ["GET", "POST", "PUT", "HEAD", "DELETE", "OPTIONS","MKCOL", "COPY", "MOVE", "PROPFIND", "PROPFIND","LOCK", "UNLOCK", "PATCH", "TRACE"] | rewrite the HTTP method.|
-| regex_uri | array[string] | optional    |         |                   | Upstream new `uri` forwarding address. Use regular expression to match URL from client, when the match is successful, the URL template will be forwarded upstream. If the match is not successful, the URL from the client will be forwarded to the upstream. When `uri` and `regex_uri` are both exist, `uri` is used first. For example: [" ^/iresty/(.*)/(.*)/(.*)", "/$1-$2-$3"], the first element represents the matching regular expression and the second element represents the URL template that is forwarded to the upstream. |
-| host      | string        | optional    |         |                   | Upstream new `host` forwarding address, example `iresty.com`. |
-| headers   | object        | optional    |         |                   | Forward to the new `headers` of the upstream, can set up multiple. If it exists, will rewrite the header, otherwise will add the header. You can set the corresponding value to an empty string to remove a header. Support the use of Nginx variables. Need to start with `$`, such as `client_addr: $remote_addr`: it means that the request header `client_addr` is the client IP. |
+| Name                        | Type          | Required | Default | Valid values                                                                                                                           | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+|-----------------------------|---------------|----------|---------|----------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| uri                         | string        | False    |         |                                                                                                                                        | New Upstream forwarding address. Value supports [Nginx variables](https://nginx.org/en/docs/http/ngx_http_core_module.html). For example, `$arg_name`.                                                                                                                                                                                                                                                                                                                       |
+| method                      | string        | False    |         | ["GET", "POST", "PUT", "HEAD", "DELETE", "OPTIONS","MKCOL", "COPY", "MOVE", "PROPFIND", "PROPFIND","LOCK", "UNLOCK", "PATCH", "TRACE"] | Rewrites the HTTP method.                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| regex_uri                   | array[string] | False    |         |                                                                                                                                        | Regular expressions can be used to match the URL from client. If it matches, the URL template is forwarded to the upstream. Otherwise, the URL from the client is forwarded. When both `uri` and `regex_uri` are configured, `uri` has a higher priority. Multiple regular expressions are currently supported for pattern matching, and the plugin will try to match them one by one until they succeed or all fail. For example: `["^/iresty/(. *)/(. *)/(. *)", "/$1-$2-$3", ^/theothers/(. *)/(. *)", "/theothers/$1-$2"]`, the element with the odd index represents the uri regular expression that matches the request from the client, and the element with the even index represents the `uri` template that is forwarded upstream upon a successful match. Please note that the length of this value must be an **even number**. |
+| host                        | string        | False    |         |                                                                                                                                        | New Upstream host address.                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| headers                     | object        | False    |         |                                                                                                                                   |                   |
+| headers.add     | object   | false     |        |                 | Append the new headers. The format is `{"name": "value",...}`. The values in the header can contain Nginx variables like `$remote_addr` and `$balancer_ip`. It also supports referencing the match result of `regex_uri` as a variable like `$1-$2-$3`.                                                                                              |
+| headers.set     | object  | false     |        |                 | Overwrite the headers. If the header does not exist, it will be added. The format is  `{"name": "value", ...}`. The values in the header can contain Nginx variables like `$remote_addr` and `$balancer_ip`. It also supports referencing the match result of `regex_uri` as a variable like `$1-$2-$3`.                                                                                        |
+| headers.remove  | array   | false     |        |                 | Remove the headers. The format is `["name", ...]`.
+| use_real_request_uri_unsafe | boolean       | False    | false   |                                                                                                                                        | Use real_request_uri (original $request_uri in nginx) to bypass URI normalization. **Enabling this is considered unsafe as it bypasses all URI normalization steps**.                                                                                                                                                                                                                                                                                                     |
 
-## How To Enable
+## Header Priority
 
-Here's an example, enable the `proxy-rewrite` plugin on the specified route:
+Header configurations are executed according to the following priorities:
+
+`add` > `remove` > `set`
+
+## Enabling the Plugin
+
+The example below enables the `proxy-rewrite` Plugin on a specific Route:
 
 ```shell
-curl http://127.0.0.1:9080/apisix/admin/routes/1  -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+curl http://127.0.0.1:9180/apisix/admin/routes/1  -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
 {
     "methods": ["GET"],
     "uri": "/test/index.html",
     "plugins": {
         "proxy-rewrite": {
             "uri": "/test/home.html",
-            "scheme": "http",
             "host": "iresty.com",
             "headers": {
-                "X-Api-Version": "v1",
-                "X-Api-Engine": "apisix",
-                "X-Api-useless": ""
+               "set": {
+                    "X-Api-Version": "v1",
+                    "X-Api-Engine": "apisix",
+                    "X-Api-useless": ""
+                },
+                "add": {
+                    "X-Request-ID": "112233"
+                },
+                "remove":[
+                    "X-test"
+                ]
             }
         }
     },
@@ -74,30 +89,26 @@ curl http://127.0.0.1:9080/apisix/admin/routes/1  -H 'X-API-KEY: edd1c9f034335f1
 }'
 ```
 
-## Test Plugin
+## Example usage
 
-Testing based on the above examples :
+Once you have enabled the Plugin as mentioned below, you can test the Route:
 
 ```shell
 curl -X GET http://127.0.0.1:9080/test/index.html
 ```
 
-Send the request and see upstream `access.log', if the output information is consistent with the configuration :
+Once you send the request, you can check the Upstream `access.log` for its output:
 
 ```
 127.0.0.1 - [26/Sep/2019:10:52:20 +0800] iresty.com GET /test/home.html HTTP/1.1 200 38 - curl/7.29.0 - 0.000 199 107
 ```
 
-This means that the `proxy-rewrite` plugin is in effect.
-
 ## Disable Plugin
 
-When you want to disable the `proxy-rewrite` plugin, it is very simple,
- you can delete the corresponding json configuration in the plugin configuration,
-  no need to restart the service, it will take effect immediately :
+To disable the `proxy-rewrite` Plugin, you can delete the corresponding JSON configuration from the Plugin configuration. APISIX will automatically reload and you do not have to restart for this to take effect.
 
 ```shell
-curl http://127.0.0.1:9080/apisix/admin/routes/1  -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+curl http://127.0.0.1:9180/apisix/admin/routes/1  -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
 {
     "methods": ["GET"],
     "uri": "/test/index.html",
@@ -110,5 +121,3 @@ curl http://127.0.0.1:9080/apisix/admin/routes/1  -H 'X-API-KEY: edd1c9f034335f1
     }
 }'
 ```
-
-The `proxy-rewrite` plugin has been disabled now. It works for other plugins.

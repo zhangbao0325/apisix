@@ -18,6 +18,7 @@
 local core   = require("apisix.core")
 local http   = require("resty.http")
 local helper = require("apisix.plugins.opa.helper")
+local type   = type
 
 local schema = {
     type = "object",
@@ -37,7 +38,10 @@ local schema = {
         },
         keepalive = {type = "boolean", default = true},
         keepalive_timeout = {type = "integer", minimum = 1000, default = 60000},
-        keepalive_pool = {type = "integer", minimum = 1, default = 5}
+        keepalive_pool = {type = "integer", minimum = 1, default = 5},
+        with_route = {type = "boolean", default = false},
+        with_service = {type = "boolean", default = false},
+        with_consumer = {type = "boolean", default = false},
     },
     required = {"host", "policy"}
 }
@@ -58,9 +62,10 @@ end
 
 function _M.access(conf, ctx)
     local body = helper.build_opa_input(conf, ctx, "http")
+
     local params = {
         method = "POST",
-        body = body,
+        body = core.json.encode(body),
         headers = {
             ["Content-Type"] = "application/json",
         },
@@ -81,7 +86,7 @@ function _M.access(conf, ctx)
     local res, err = httpc:request_uri(endpoint, params)
 
     -- block by default when decision is unavailable
-    if not res or err then
+    if not res then
         core.log.error("failed to process OPA decision, err: ", err)
         return 403
     end
@@ -89,13 +94,37 @@ function _M.access(conf, ctx)
     -- parse the results of the decision
     local data, err = core.json.decode(res.body)
 
-    if err then
+    if not data then
         core.log.error("invalid response body: ", res.body, " err: ", err)
         return 503
     end
 
     if not data.result then
-        return 403
+        core.log.error("invalid OPA decision format: ", res.body,
+                       " err: `result` field does not exist")
+        return 503
+    end
+
+    local result = data.result
+
+    if not result.allow then
+        if result.headers then
+            core.response.set_header(result.headers)
+        end
+
+        local status_code = 403
+        if result.status_code then
+            status_code = result.status_code
+        end
+
+        local reason = nil
+        if result.reason then
+            reason = type(result.reason) == "table"
+                and core.json.encode(result.reason)
+                or result.reason
+        end
+
+        return status_code, reason
     end
 end
 

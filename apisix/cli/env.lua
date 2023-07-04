@@ -30,10 +30,11 @@ local tonumber = tonumber
 return function (apisix_home, pkg_cpath_org, pkg_path_org)
     -- ulimit setting should be checked when APISIX starts
     local res, err = util.execute_cmd("ulimit -n")
-    if not res or err ~= nil then
+    if not res then
         error("failed to exec ulimit cmd \'ulimit -n \', err: " .. err)
     end
-    local ulimit = tonumber(util.trim(res))
+    local trimed_res = util.trim(res)
+    local ulimit = trimed_res == "unlimited" and trimed_res or tonumber(trimed_res)
     if not ulimit then
         error("failed to fetch current maximum number of open file descriptors")
     end
@@ -78,8 +79,25 @@ return function (apisix_home, pkg_cpath_org, pkg_path_org)
         end
     end
 
-    local openresty_args = [[openresty -p ]] .. apisix_home .. [[ -c ]]
+    -- pre-transform openresty path
+    res, err = util.execute_cmd("command -v openresty")
+    if not res then
+        error("failed to exec cmd \'command -v openresty\', err: " .. err)
+    end
+    local openresty_path_abs = util.trim(res)
+
+    local openresty_args = openresty_path_abs .. [[ -p ]] .. apisix_home .. [[ -c ]]
                            .. apisix_home .. [[/conf/nginx.conf]]
+
+    local or_info, err = util.execute_cmd("openresty -V 2>&1")
+    if not or_info then
+        error("failed to exec cmd \'openresty -V 2>&1\', err: " .. err)
+    end
+
+    local use_apisix_base = true
+    if not or_info:find("apisix-nginx-module", 1, true) then
+        use_apisix_base = false
+    end
 
     local min_etcd_version = "3.4.0"
 
@@ -87,6 +105,8 @@ return function (apisix_home, pkg_cpath_org, pkg_path_org)
         apisix_home = apisix_home,
         is_root_path = is_root_path,
         openresty_args = openresty_args,
+        openresty_info = or_info,
+        use_apisix_base = use_apisix_base,
         pkg_cpath_org = pkg_cpath_org,
         pkg_path_org = pkg_path_org,
         min_etcd_version = min_etcd_version,

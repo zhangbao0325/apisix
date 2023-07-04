@@ -1,30 +1,57 @@
 {
-  "version": "2.11.0",
+  "version": "3.3.0",
   "sidebar": [
     {
       "type": "category",
-      "label": "Architecture Design",
+      "label": "Getting Started",
       "items": [
-        "architecture-design/apisix",
-        "architecture-design/route",
-        "architecture-design/plugin",
-        "architecture-design/script",
-        "architecture-design/service",
-        "architecture-design/consumer",
-        "architecture-design/upstream",
-        "architecture-design/global-rule",
-        "architecture-design/plugin-config",
-        "architecture-design/router",
-        "architecture-design/debug-mode"
+        "getting-started/README",
+        "getting-started/configure-routes",
+        "getting-started/load-balancing",
+        "getting-started/key-authentication",
+        "getting-started/rate-limiting"
       ]
     },
     {
       "type": "doc",
-      "id": "getting-started"
+      "id": "installation-guide"
     },
     {
       "type": "doc",
-      "id": "how-to-build"
+      "id": "architecture-design/apisix"
+    },
+    {
+      "type": "category",
+      "label": "Tutorials",
+      "items": [
+        "tutorials/expose-api",
+        "tutorials/protect-api",
+        "tutorials/observe-your-api",
+        "tutorials/manage-api-consumers",
+        "tutorials/cache-api-responses",
+        "tutorials/add-multiple-api-versions",
+        "tutorials/health-check",
+        "tutorials/client-to-apisix-mtls",
+        "tutorials/websocket-authentication"
+      ]
+    },
+    {
+      "type": "category",
+      "label": "Terminology",
+      "items": [
+        "terminology/api-gateway",
+        "terminology/consumer",
+        "terminology/consumer-group",
+        "terminology/global-rule",
+        "terminology/plugin",
+        "terminology/plugin-config",
+        "terminology/route",
+        "terminology/router",
+        "terminology/script",
+        "terminology/service",
+        "terminology/upstream",
+        "terminology/secret"
+      ]
     },
     {
       "type": "category",
@@ -41,7 +68,10 @@
             "plugins/real-ip",
             "plugins/server-info",
             "plugins/ext-plugin-pre-req",
-            "plugins/ext-plugin-post-req"
+            "plugins/ext-plugin-post-req",
+            "plugins/ext-plugin-post-resp",
+            "plugins/inspect",
+            "plugins/workflow"
           ]
         },
         {
@@ -51,7 +81,11 @@
             "plugins/response-rewrite",
             "plugins/proxy-rewrite",
             "plugins/grpc-transcode",
-            "plugins/fault-injection"
+            "plugins/grpc-web",
+            "plugins/fault-injection",
+            "plugins/mocking",
+            "plugins/degraphql",
+            "plugins/body-transformer"
           ]
         },
         {
@@ -62,11 +96,15 @@
             "plugins/jwt-auth",
             "plugins/basic-auth",
             "plugins/authz-keycloak",
+            "plugins/authz-casdoor",
             "plugins/wolf-rbac",
             "plugins/openid-connect",
+            "plugins/cas-auth",
             "plugins/hmac-auth",
             "plugins/authz-casbin",
-            "plugins/ldap-auth"
+            "plugins/ldap-auth",
+            "plugins/opa",
+            "plugins/forward-auth"
           ]
         },
         {
@@ -78,7 +116,10 @@
             "plugins/ip-restriction",
             "plugins/ua-restriction",
             "plugins/referer-restriction",
-            "plugins/consumer-restriction"
+            "plugins/consumer-restriction",
+            "plugins/csrf",
+            "plugins/public-api",
+            "plugins/gm"
           ]
         },
         {
@@ -94,35 +135,56 @@
             "plugins/api-breaker",
             "plugins/traffic-split",
             "plugins/request-id",
+            "plugins/proxy-control",
             "plugins/client-control"
           ]
         },
         {
           "type": "category",
-          "label": "Monitoring",
+          "label": "Observability",
           "items": [
-            "plugins/prometheus",
-            "plugins/zipkin",
-            "plugins/skywalking",
-            "plugins/node-status",
-            "plugins/datadog"
-          ]
-        },
-        {
-          "type": "category",
-          "label": "Loggers",
-          "items": [
-            "plugins/http-logger",
-            "plugins/skywalking-logger",
-            "plugins/tcp-logger",
-            "plugins/kafka-logger",
-            "plugins/rocketmq-logger",
-            "plugins/udp-logger",
-            "plugins/syslog",
-            "plugins/log-rotate",
-            "plugins/error-log-logger",
-            "plugins/sls-logger",
-            "plugins/google-cloud-logging"
+            {
+              "type": "category",
+              "label": "Tracers",
+              "items": [
+                "plugins/zipkin",
+                "plugins/skywalking",
+                "plugins/opentelemetry"
+              ]
+            },
+            {
+              "type": "category",
+              "label": "Metrics",
+              "items": [
+                "plugins/prometheus",
+                "plugins/node-status",
+                "plugins/datadog"
+              ]
+            },
+            {
+              "type": "category",
+              "label": "Loggers",
+              "items": [
+                "plugins/http-logger",
+                "plugins/skywalking-logger",
+                "plugins/tcp-logger",
+                "plugins/kafka-logger",
+                "plugins/rocketmq-logger",
+                "plugins/udp-logger",
+                "plugins/clickhouse-logger",
+                "plugins/syslog",
+                "plugins/log-rotate",
+                "plugins/error-log-logger",
+                "plugins/sls-logger",
+                "plugins/google-cloud-logging",
+                "plugins/splunk-hec-logging",
+                "plugins/file-logger",
+                "plugins/loggly",
+                "plugins/elasticsearch-logger",
+                "plugins/tencent-cloud-cls",
+                "plugins/loki-logger"
+              ]
+            }
           ]
         },
         {
@@ -132,15 +194,17 @@
             "plugins/serverless",
             "plugins/azure-functions",
             "plugins/openwhisk",
-            "plugins/aws-lambda"
+            "plugins/aws-lambda",
+            "plugins/openfunction"
           ]
         },
         {
           "type": "category",
-          "label": "Other Protocols",
+          "label": "Other protocols",
           "items": [
             "plugins/dubbo-proxy",
-            "plugins/mqtt-proxy"
+            "plugins/mqtt-proxy",
+            "plugins/kafka-proxy"
           ]
         }
       ]
@@ -160,6 +224,53 @@
       ]
     },
     {
+      "type": "category",
+      "label": "Development",
+      "items": [
+        {
+          "type": "doc",
+          "id": "building-apisix"
+        },
+        {
+          "type": "doc",
+          "id": "support-fips-in-apisix"
+        },
+        {
+          "type": "doc",
+          "id": "external-plugin"
+        },
+        {
+          "type": "doc",
+          "id": "wasm"
+        },
+        {
+          "type": "link",
+          "label": "CODE_STYLE",
+          "href": "https://github.com/apache/apisix/blob/master/CODE_STYLE.md"
+        },
+        {
+          "type": "category",
+          "label": "internal",
+          "items": [
+            "internal/plugin-runner",
+            "internal/testing-framework"
+          ]
+        },
+        {
+          "type": "doc",
+          "id": "plugin-develop"
+        },
+        {
+          "type": "doc",
+          "id": "debug-mode"
+        }
+      ]
+    },
+    {
+      "type": "doc",
+      "id": "deployment-modes"
+    },
+    {
       "type": "doc",
       "id": "FAQ"
     },
@@ -173,22 +284,33 @@
           "items": [
             "discovery",
             "discovery/dns",
+            "discovery/consul",
             "discovery/consul_kv",
             "discovery/nacos",
-            "discovery/eureka"
+            "discovery/eureka",
+            "discovery/control-plane-service-discovery",
+            "discovery/kubernetes"
+          ]
+        },
+        {
+          "type": "category",
+          "label": "PubSub",
+          "items": [
+            "pubsub",
+            "pubsub/kafka"
+          ]
+        },
+        {
+          "type": "category",
+          "label": "xRPC",
+          "items": [
+            "xrpc/redis",
+            "xrpc"
           ]
         },
         {
           "type": "doc",
-          "id": "health-check"
-        },
-        {
-          "type": "doc",
           "id": "router-radixtree"
-        },
-        {
-          "type": "doc",
-          "id": "stand-alone"
         },
         {
           "type": "doc",
@@ -220,24 +342,7 @@
         },
         {
           "type": "doc",
-          "id": "plugin-develop"
-        },
-        {
-          "type": "doc",
-          "id": "external-plugin"
-        },
-        {
-          "type": "doc",
-          "id": "wasm"
-        },
-        {
-          "type": "doc",
-          "id": "plugin-interceptors"
-        },
-        {
-          "type": "link",
-          "label": "CODE_STYLE",
-          "href": "https://github.com/apache/apisix/blob/master/CODE_STYLE.md"
+          "id": "apisix-variable"
         },
         {
           "type": "doc",
@@ -252,13 +357,6 @@
           "id": "debug-function"
         },
         {
-          "type": "category",
-          "label": "internal",
-          "items": [
-            "internal/testing-framework"
-          ]
-        },
-        {
           "type": "doc",
           "id": "profile"
         }
@@ -268,6 +366,10 @@
       "type": "link",
       "label": "CHANGELOG",
       "href": "https://github.com/apache/apisix/blob/master/CHANGELOG.md"
+    },
+    {
+      "type": "doc",
+      "id": "upgrade-guide-from-2.15.x-to-3.0.0"
     }
   ]
 }

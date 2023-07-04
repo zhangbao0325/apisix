@@ -1,7 +1,11 @@
 ---
-title: APISIX
+title: Architecture
+keywords:
+  - API Gateway
+  - Apache APISIX
+  - APISIX architecture
+description: Architecture of Apache APISIX—the Cloud Native API Gateway.
 ---
-
 <!--
 #
 # Licensed to the Apache Software Foundation (ASF) under one or more
@@ -21,40 +25,27 @@ title: APISIX
 #
 -->
 
-## Apache APISIX : Software Architecture
+APISIX is built on top of Nginx and [ngx_lua](https://github.com/openresty/lua-nginx-module) leveraging the power offered by LuaJIT. See [Why Apache APISIX chose Nginx and Lua to build API Gateway?](https://apisix.apache.org/blog/2021/08/25/why-apache-apisix-chose-nginx-and-lua/).
 
-![flow-software-architecture](../../../assets/images/flow-software-architecture.png)
+![flow-software-architecture](https://raw.githubusercontent.com/apache/apisix/master/docs/assets/images/flow-software-architecture.png)
 
-## Plugin Loading Process
+APISIX has two main parts:
 
-![flow-load-plugin](../../../assets/images/flow-load-plugin.png)
+1. APISIX core, Lua plugin, multi-language Plugin runtime, and the WASM plugin runtime.
+2. Built-in Plugins that adds features for observability, security, traffic control, etc.
 
-## Plugin Hierarchy Structure
+The APISIX core handles the important functions like matching Routes, load balancing, service discovery, configuration management, and provides a management API. It also includes APISIX Plugin runtime supporting Lua and multilingual Plugins (Go, Java , Python, JavaScript, etc) including the experimental WASM Plugin runtime.
 
-![flow-plugin-internal](../../../assets/images/flow-plugin-internal.png)
+APISIX also has a set of [built-in Plugins](https://apisix.apache.org/docs/apisix/plugins/batch-requests) that adds features like authentication, security, observability, etc. They are written in Lua.
 
-## Configure APISIX
+## Request handling process
 
-There are two methods to configure APISIX: directly change `conf/config.yaml`, or add file path argument using `-c` or `--config` flag when start APISIX like `apisix start -c <path string>`
+The diagram below shows how APISIX handles an incoming request and applies corresponding Plugins:
 
-For example, set the default listening port of APISIX to 8000, and keep other configurations as default. The configuration in `config.yaml` should be like this:
+![flow-load-plugin](https://raw.githubusercontent.com/apache/apisix/master/docs/assets/images/flow-load-plugin.png)
 
-```yaml
-apisix:
-  node_listen: 8000 # APISIX listening port
-```
+## Plugin hierarchy
 
-Set the default listening port of APISIX to 8000, set the `etcd` address to `http://foo:2379`,
-and keep other configurations as default. The configuration in `config.yaml` should be like this:
+The chart below shows the order in which different types of Plugin are applied to a request:
 
-```yaml
-apisix:
-  node_listen: 8000 # APISIX listening port
-
-etcd:
-  host: "http://foo:2379" # etcd address
-```
-
-Other default configurations can be found in the `conf/config-default.yaml` file, which is bound to the APISIX source code. **Never** manually modify the `conf/config-default.yaml` file. If you need to customize any configuration, you should update the `config.yaml` file.
-
-**Note** `APISIX` will generate `conf/nginx.conf` file automatically, so please _DO NOT EDIT_ `conf/nginx.conf` file too.
+![flow-plugin-internal](https://raw.githubusercontent.com/apache/apisix/master/docs/assets/images/flow-plugin-internal.png)

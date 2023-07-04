@@ -125,7 +125,7 @@ end
 
 
 local function parse_domain_for_node(node)
-    local host = node.host
+    local host = node.domain or node.host
     if not ipmatcher.parse_ipv4(host)
        and not ipmatcher.parse_ipv6(host)
     then
@@ -172,11 +172,7 @@ local function set_upstream(upstream_info, ctx)
         upstream_host = upstream_info.upstream_host,
         key = upstream_info.key,
         nodes = new_nodes,
-        timeout = {
-            send = upstream_info.timeout and upstream_info.timeout.send or 15,
-            read = upstream_info.timeout and upstream_info.timeout.read or 15,
-            connect = upstream_info.timeout and upstream_info.timeout.connect or 15
-        }
+        timeout = upstream_info.timeout,
     }
 
     local ok, err = upstream.check_schema(up_conf)
@@ -238,6 +234,7 @@ function _M.access(conf, ctx)
 
     for _, rule in ipairs(conf.rules) do
         if not rule.match then
+            match_passed = true
             weighted_upstreams = rule.weighted_upstreams
             break
         end

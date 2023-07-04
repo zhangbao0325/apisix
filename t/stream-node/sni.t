@@ -23,10 +23,6 @@ no_shuffle();
 
 add_block_preprocessor(sub {
     my ($block) = @_;
-
-    if (!defined $block->no_error_log) {
-        $block->set_value("no_error_log", "[error]");
-    }
 });
 
 run_tests();
@@ -46,7 +42,7 @@ __DATA__
                 cert = ssl_cert, key = ssl_key,
                 sni = "*.test.com",
             }
-            local code, body = t.test('/apisix/admin/ssl/1',
+            local code, body = t.test('/apisix/admin/ssls/1',
                 ngx.HTTP_PUT,
                 core.json.encode(data)
             )
@@ -156,7 +152,6 @@ proxy request to 127.0.0.2:1995
 
 
 === TEST 5: hit route, no TLS
---- stream_enable
 --- stream_request
 mmm
 --- stream_response

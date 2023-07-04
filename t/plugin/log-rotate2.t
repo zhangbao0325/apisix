@@ -25,14 +25,10 @@ no_root_location();
 add_block_preprocessor(sub {
     my ($block) = @_;
 
-    my $user_yaml_config = <<_EOC_;
-apisix:
-  node_listen: 1984
-  admin_key: null
-
-plugins:                          # plugin list
+    if (! $block->extra_yaml_config) {
+        my $extra_yaml_config = <<_EOC_;
+plugins:
   - log-rotate
-
 plugin_attr:
   log-rotate:
     interval: 1
@@ -40,11 +36,9 @@ plugin_attr:
     enable_compression: true
 _EOC_
 
-    $block->set_value("yaml_config", $user_yaml_config);
-
-    if ((!defined $block->error_log) && (!defined $block->no_error_log)) {
-        $block->set_value("no_error_log", "[error]");
+        $block->set_value("extra_yaml_config", $extra_yaml_config);
     }
+
 
     if (!defined $block->request) {
         $block->set_value("request", "GET /t");
@@ -61,7 +55,7 @@ __DATA__
     location /t {
         content_by_lua_block {
             ngx.log(ngx.ERR, "start xxxxxx")
-            ngx.sleep(2.5)
+            ngx.sleep(3.5)
             local has_split_access_file = false
             local has_split_error_file = false
             local lfs = require("lfs")
@@ -105,7 +99,7 @@ start xxxxxx
 --- config
     location /t {
         content_by_lua_block {
-            ngx.sleep(2)
+            ngx.sleep(3)
 
             local default_logs = {}
             for file_name in lfs.dir(ngx.config.prefix() .. "/logs/") do
@@ -138,3 +132,75 @@ start xxxxxx
     }
 --- response_body
 passed
+
+
+
+=== TEST 4: test rotate time align
+--- yaml_config
+apisix:
+  node_listen: 1984
+  admin_key: ~
+plugins:
+  - log-rotate
+plugin_attr:
+  log-rotate:
+    interval: 3600
+    max_kept: 1
+--- config
+    location /t {
+        content_by_lua_block {
+            ngx.sleep(0.1)
+            local log_file = ngx.config.prefix() .. "logs/error.log"
+            local file = io.open(log_file, "r")
+            local log = file:read("*a")
+
+            local m, err = ngx.re.match(log, [[first init rotate time is: (\d+)]], "jom")
+            if not m then
+                ngx.log(ngx.ERR, "failed to gmatch: ", err)
+                return
+            end
+
+            ngx.sleep(2)
+
+            local now_time = ngx.time()
+            local interval = 3600
+            local rotate_time = now_time + interval - (now_time % interval)
+            if tonumber(m[1]) == tonumber(rotate_time) then
+                ngx.say("passed")
+            end
+        }
+    }
+--- response_body
+passed
+
+
+
+=== TEST 5: max_kept effective on compression files
+--- extra_yaml_config
+plugins:
+  - log-rotate
+plugin_attr:
+  log-rotate:
+    interval: 1
+    max_kept: 1
+    enable_compression: true
+--- config
+    location /t {
+        content_by_lua_block {
+            ngx.sleep(3.5)
+            local has_split_access_file = false
+            local has_split_error_file = false
+            local lfs = require("lfs")
+            local count = 0
+            for file_name in lfs.dir(ngx.config.prefix() .. "/logs/") do
+                if string.match(file_name, ".tar.gz$") then
+                    count = count + 1
+                end
+            end
+            --- only two compression file, access.log.tar.gz and error.log.tar.gz
+            ngx.say(count)
+        }
+    }
+--- response_body
+2
+--- timeout: 5

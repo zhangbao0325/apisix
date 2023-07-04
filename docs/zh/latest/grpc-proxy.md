@@ -32,15 +32,15 @@ title: gRPC 代理
 
 ### 创建代理 gRPC 的 Route
 
-在指定 Route 中，代理 gRPC 服务接口:
+在指定 Route 中，代理 gRPC 服务接口：
 
 * 注意：这个 Route 对应的 Upstream 的 `scheme` 必须设置为 `grpc` 或者 `grpcs`。
-* 注意： APISIX 使用 TLS 加密的 HTTP/2 暴露 gRPC 服务, 所以需要先 [配置 SSL 证书](certificate.md)；
-* 注意： APISIX 也支持通过纯文本的 HTTP/2 暴露 gRPC 服务，这不需要依赖 SSL，通常用于内网环境代理gRPC服务
+* 注意：APISIX 使用 TLS 加密的 HTTP/2 暴露 gRPC 服务，所以需要先 [配置 SSL 证书](certificate.md)；
+* 注意：APISIX 也支持通过纯文本的 HTTP/2 暴露 gRPC 服务，这不需要依赖 SSL，通常用于内网环境代理 gRPC 服务
 * 下面例子所代理的 gRPC 服务可供参考：[grpc_server_example](https://github.com/api7/grpc_server_example)。
 
 ```shell
-curl http://127.0.0.1:9080/apisix/admin/routes/1 -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+curl http://127.0.0.1:9180/apisix/admin/routes/1 -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
 {
     "methods": ["POST", "GET"],
     "uri": "/helloworld.Greeter/SayHello",
@@ -72,7 +72,7 @@ grpcurl -insecure -import-path /pathtoprotos  -proto helloworld.proto  \
 
 ### 测试纯文本的 HTTP/2
 
-默认情况下，APISIX只在 `9443` 端口支持 TLS 加密的 HTTP/2。你也可以支持纯本文的 HTTP/2，只需要修改 `conf/config.yaml` 文件中的 `node_listen` 配置即可。
+默认情况下，APISIX 只在 `9443` 端口支持 TLS 加密的 HTTP/2。你也可以支持纯本文的 HTTP/2，只需要修改 `conf/config.yaml` 文件中的 `node_listen` 配置即可。
 
 ```yaml
 apisix:
@@ -100,7 +100,7 @@ grpcurl -plaintext -import-path /pathtoprotos  -proto helloworld.proto  \
 如果你的 gRPC 服务使用了自己的 TLS 加密，即所谓的 `gPRCS` (gRPC + TLS)，那么需要修改 scheme 为 `grpcs`。继续上面的例子，50052 端口上跑的是 gPRCS 的服务，这时候应该这么配置：
 
 ```shell
-curl http://127.0.0.1:9080/apisix/admin/routes/1 -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+curl http://127.0.0.1:9180/apisix/admin/routes/1 -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
 {
     "methods": ["POST", "GET"],
     "uri": "/helloworld.Greeter/SayHello",

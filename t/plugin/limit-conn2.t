@@ -366,31 +366,6 @@ request latency is nil
                             "type": "roundrobin"
                         },
                         "uri": "/limit_conn"
-                }]],
-                [[{
-                    "node": {
-                        "value": {
-                            "plugins": {
-                                "limit-conn": {
-                                    "conn": 1,
-                                    "burst": 0,
-                                    "default_conn_delay": 0.1,
-                                    "rejected_code": 503,
-                                    "key": "$http_a $http_b",
-                                    "key_type": "var_combination"
-                                }
-                            },
-                            "upstream": {
-                                "nodes": {
-                                    "127.0.0.1:1980": 1
-                                },
-                                "type": "roundrobin"
-                            },
-                            "uri": "/limit_conn"
-                        },
-                        "key": "/apisix/routes/1"
-                    },
-                    "action": "set"
                 }]]
                 )
 
@@ -400,12 +375,8 @@ request latency is nil
             ngx.say(body)
         }
     }
---- request
-GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -430,13 +401,9 @@ passed
             ngx.say(json.encode(ress))
         }
     }
---- request
-GET /t
 --- timeout: 10s
 --- response_body
 [200,200]
---- no_error_log
-[error]
 
 
 
@@ -450,8 +417,6 @@ GET /test_concurrency
 503
 503
 503
---- no_error_log
-[error]
 --- error_log
 The value of the configured key is empty, use client IP instead
 
@@ -491,12 +456,8 @@ The value of the configured key is empty, use client IP instead
             ngx.say(body)
         }
     }
---- request
-GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -510,7 +471,5 @@ GET /test_concurrency
 503
 503
 503
---- no_error_log
-[error]
 --- error_log
 The value of the configured key is empty, use client IP instead

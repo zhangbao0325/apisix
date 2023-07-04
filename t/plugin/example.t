@@ -42,8 +42,6 @@ __DATA__
 GET /t
 --- response_body
 done
---- no_error_log
-[error]
 
 
 
@@ -66,8 +64,6 @@ GET /t
 --- response_body
 property "i" is required
 done
---- no_error_log
-[error]
 
 
 
@@ -87,10 +83,8 @@ done
 --- request
 GET /t
 --- response_body
-property "i" validation failed: expected -1 to be greater than 0
+property "i" validation failed: expected -1 to be at least 0
 done
---- no_error_log
-[error]
 
 
 
@@ -112,8 +106,6 @@ GET /t
 --- response_body
 property "s" validation failed: wrong type: expected string, got number
 done
---- no_error_log
-[error]
 
 
 
@@ -135,8 +127,6 @@ GET /t
 --- response_body
 property "t" validation failed: expect array to have at least 1 items
 done
---- no_error_log
-[error]
 
 
 
@@ -165,12 +155,15 @@ GET /t
 --- response_body
 plugin name: example-plugin priority: 0
 --- yaml_config
-etcd:
-  host:
-    - "http://127.0.0.1:2379" # etcd address
-  prefix: "/apisix"             # apisix configurations prefix
-  timeout: 1
-
+deployment:
+  role: traditional
+  role_traditional:
+    config_provider: etcd
+  etcd:
+    host:
+      - "http://127.0.0.1:2379" # etcd address
+    prefix: "/apisix"           # apisix configurations prefix
+    timeout: 1
 plugins:
   - example-plugin
   - not-exist-plugin
@@ -215,8 +208,6 @@ qr/module 'apisix.plugins.not-exist-plugin' not found/
 GET /t
 --- response_body
 plugin [example-plugin] config: {"i":1,"s":"s","t":[1,2]}
---- no_error_log
-[error]
 
 
 
@@ -249,8 +240,6 @@ plugin [example-plugin] config: {"i":1,"s":"s","t":[1,2]}
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -259,8 +248,6 @@ passed
 GET /server_port
 --- response_body_like eval
 qr/1981/
---- no_error_log
-[error]
 
 
 
@@ -284,8 +271,6 @@ qr/1981/
 GET /t
 --- response_body
 done
---- no_error_log
-[error]
 
 
 
@@ -309,5 +294,48 @@ done
 GET /t
 --- response_body
 done
---- no_error_log
-[error]
+
+
+
+=== TEST 12: body filter
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin").test
+            local code, body = t('/apisix/admin/routes/1',
+                 ngx.HTTP_PUT,
+                 [[{
+                        "plugins": {
+                            "example-plugin": {
+                                "i": 11,
+                                "ip": "127.0.0.1",
+                                "port": 1981
+                            }
+                        },
+                        "uri": "/server_port"
+                }]]
+                )
+
+            if code >= 300 then
+                ngx.status = code
+            end
+            ngx.say(body)
+        }
+    }
+--- request
+GET /t
+--- response_body
+passed
+
+
+
+=== TEST 13: hit route
+--- request
+GET /server_port
+--- grep_error_log eval
+qr/plugin (body_filter|delayed_body_filter) phase, eof: (false|true)/
+--- grep_error_log_out
+plugin body_filter phase, eof: false
+plugin delayed_body_filter phase, eof: false
+plugin body_filter phase, eof: true
+plugin delayed_body_filter phase, eof: true

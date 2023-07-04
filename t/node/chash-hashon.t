@@ -51,17 +51,14 @@ __DATA__
                     }
                 }]],
                 [[{
-                    "node": {
-                        "value": {
-                            "username": "jack",
-                            "plugins": {
-                                "key-auth": {
-                                    "key": "auth-jack"
-                                }
+                    "value": {
+                        "username": "jack",
+                        "plugins": {
+                            "key-auth": {
+                                "key": "auth-jack"
                             }
                         }
-                    },
-                    "action": "set"
+                    }
                 }]]
                 )
 
@@ -82,17 +79,14 @@ __DATA__
                     }
                 }]],
                 [[{
-                    "node": {
-                        "value": {
-                            "username": "tom",
-                            "plugins": {
-                                "key-auth": {
-                                    "key": "auth-tom"
-                                }
+                    "value": {
+                        "username": "tom",
+                        "plugins": {
+                            "key-auth": {
+                                "key": "auth-tom"
                             }
                         }
-                    },
-                    "action": "set"
+                    }
                 }]]
                 )
             ngx.say(code .. " " ..body)
@@ -103,8 +97,6 @@ GET /t
 --- response_body
 200 passed
 200 passed
---- no_error_log
-[error]
 
 
 
@@ -141,8 +133,6 @@ GET /t
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -289,8 +279,6 @@ chash_key: "tom"
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -429,8 +417,6 @@ chash_key fetch is nil, use default chash_key remote_addr: 127.0.0.1
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -569,8 +555,6 @@ chash_key fetch is nil, use default chash_key remote_addr: 127.0.0.1
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -616,8 +600,6 @@ passed
 GET /t
 --- response_body
 [{"count":3,"port":"1981"},{"count":3,"port":"1980"}]
---- no_error_log
-[error]
 --- error_log
 chash_key: "chash_val_1"
 chash_key: "chash_val_2"
@@ -659,8 +641,6 @@ chash_key: "chash_val_6"
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 

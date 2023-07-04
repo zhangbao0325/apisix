@@ -14,10 +14,18 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 --
+
+--- OS module.
+--
+-- @module core.os
+
 local ffi = require("ffi")
 local ffi_str = ffi.string
 local ffi_errno = ffi.errno
 local C = ffi.C
+local ceil = math.ceil
+local floor = math.floor
+local error = error
 local tostring = tostring
 local type = type
 
@@ -42,8 +50,15 @@ local function err()
     return ffi_str(C.strerror(ffi_errno()))
 end
 
-
--- setenv sets the value of the environment variable
+---
+--  Sets the value of the environment variable.
+--
+-- @function core.os.setenv
+-- @tparam string name The name of environment variable.
+-- @tparam string value The value of environment variable.
+-- @treturn boolean Results of setting environment variables, true on success.
+-- @usage
+-- local ok, err = core.os.setenv("foo", "bar")
 function _M.setenv(name, value)
     local tv = type(value)
     if type(name) ~= "string" or (tv ~= "string" and tv ~= "number") then
@@ -57,6 +72,20 @@ function _M.setenv(name, value)
     end
     return true
 end
+
+
+---
+--  sleep blockingly in microseconds
+--
+-- @function core.os.usleep
+-- @tparam number us The number of microseconds.
+local function usleep(us)
+    if ceil(us) ~= floor(us) then
+        error("bad microseconds: " .. us)
+    end
+    C.usleep(us)
+end
+_M.usleep = usleep
 
 
 local function waitpid_nohang(pid)
@@ -74,7 +103,7 @@ function _M.waitpid(pid, timeout)
     local total = timeout * 1000 * 1000
     while step * count < total do
         count = count + 1
-        C.usleep(step)
+        usleep(step)
         local ok, err = waitpid_nohang(pid)
         if err then
             return nil, err

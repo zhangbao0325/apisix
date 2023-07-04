@@ -22,13 +22,15 @@ if [ -z ${OPENRESTY_PREFIX} ]; then
     OPENRESTY_PREFIX="/usr/local/openresty"
 fi
 
-wget https://github.com/luarocks/luarocks/archive/v3.4.0.tar.gz
-tar -xf v3.4.0.tar.gz
-cd luarocks-3.4.0 || exit
+LUAROCKS_VER=3.8.0
+wget -q https://github.com/luarocks/luarocks/archive/v"$LUAROCKS_VER".tar.gz
+tar -xf v"$LUAROCKS_VER".tar.gz
+rm -f v"$LUAROCKS_VER".tar.gz
+cd luarocks-"$LUAROCKS_VER" || exit
 
 OR_BIN="$OPENRESTY_PREFIX/bin/openresty"
-OR_VER=$($OR_BIN -v 2>&1 | awk -F '/' '{print $2}' | awk -F '.' '{print $1"."$2}')
-if [[ -e $OR_BIN && "$OR_VER" == 1.19 ]]; then
+OR_VER=$($OR_BIN -v 2>&1 | awk -F '/' '{print $2}' | awk -F '.' '{print $1 * 100 + $2}')
+if [[ -e $OR_BIN && "$OR_VER" -ge 119 ]]; then
     WITH_LUA_OPT="--with-lua=${OPENRESTY_PREFIX}/luajit"
 else
     # For old version OpenResty, we still need to install LuaRocks with Lua
@@ -41,7 +43,7 @@ fi
 make build > build.log 2>&1 || (cat build.log && exit 1)
 sudo make install > build.log 2>&1 || (cat build.log && exit 1)
 cd .. || exit
-rm -rf luarocks-3.4.0
+rm -rf luarocks-"$LUAROCKS_VER"
 
 mkdir ~/.luarocks || true
 
@@ -49,6 +51,12 @@ mkdir ~/.luarocks || true
 OPENSSL_PREFIX=${OPENRESTY_PREFIX}/openssl
 if [ -d ${OPENRESTY_PREFIX}/openssl111 ]; then
     OPENSSL_PREFIX=${OPENRESTY_PREFIX}/openssl111
+fi
+
+FOUND_PATH=$(echo "${PATH}" | grep -oP '(?<=:|)/usr/local/bin(?=:|)') || true
+if [[ "${FOUND_PATH}" == "" ]]; then
+   echo "Warning: the path /usr/local/bin is not included in the system default PATH variable."
+   export PATH=$PATH:/usr/local/bin
 fi
 
 luarocks config variables.OPENSSL_LIBDIR ${OPENSSL_PREFIX}/lib

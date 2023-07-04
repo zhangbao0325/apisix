@@ -1,7 +1,12 @@
 ---
 title: google-cloud-logging
+keywords:
+  - Apache APISIX
+  - API Gateway
+  - Plugin
+  - Google Cloud logging
+description: This document contains information about the Apache APISIX google-cloud-logging Plugin.
 ---
-
 <!--
 #
 # Licensed to the Apache Software Foundation (ASF) under one or more
@@ -21,51 +26,73 @@ title: google-cloud-logging
 #
 -->
 
-## Summary
+## Description
 
-- [**Name**](#name)
-- [**Attributes**](#attributes)
-- [**How To Enable**](#how-to-enable)
-- [**Test Plugin**](#test-plugin)
-- [**Disable Plugin**](#disable-plugin)
+The `google-cloud-logging` Plugin is used to send APISIX access logs to [Google Cloud Logging Service](https://cloud.google.com/logging/).
 
-## Name
-
-`google-cloud-logging` plugin is used to send the access log of `Apache APISIX` to the [Google Cloud Logging Service](https://cloud.google.com/logging/).
-
-This plugin provides the ability to push log data as a batch to Google Cloud logging Service.
-
-For more info on Batch-Processor in Apache APISIX please refer:
-[Batch-Processor](../batch-processor.md)
+This plugin also allows to push logs as a batch to your Google Cloud Logging Service. It might take some time to receive the log data. It will be automatically sent after the timer function in the [batch processor](../batch-processor.md) expires.
 
 ## Attributes
 
-| Name                    | Requirement   | Default                                                                                                                                                                                           | Description                                                                                                                                                                      |
-| ----------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| auth_config             | Semi-optional |                                                                                                                                                                                                   | one of `auth_config` or `auth_file` must be configured                                                                                                                           |
-| auth_config.private_key | required      |                                                                                                                                                                                                   | the private key parameters of the Google service account                                                                                                                         |
-| auth_config.project_id  | required      |                                                                                                                                                                                                   | the project id parameters of the Google service account                                                                                                                          |
-| auth_config.token_uri   | optional      | https://oauth2.googleapis.com/token                                                                                                                                                               | the token uri parameters of the Google service account                                                                                                                           |
-| auth_config.entries_uri | optional      | https://logging.googleapis.com/v2/entries:write                                                                                                                                                   | google cloud logging service API                                                                                                                                                       |
-| auth_config.scopes      | optional      | ["https://www.googleapis.com/auth/logging.read","https://www.googleapis.com/auth/logging.write","https://www.googleapis.com/auth/logging.admin","https://www.googleapis.com/auth/cloud-platform"] | the access scopes parameters of the Google service account, refer to: [OAuth 2.0 Scopes for Google APIs](https://developers.google.com/identity/protocols/oauth2/scopes#logging) |
-| auth_config.ssl_verify  | optional      | true                                                                                                                                                                                              | enable `SSL` verification, option as per [OpenResty docs](https://github.com/openresty/lua-nginx-module#tcpsocksslhandshake)                                                    |
-| auth_file               | semi-optional |                                                                                                                                                                                                   | path to the google service account json file（Semi-optional, one of auth_config or auth_file must be configured）                                                              |
-| resource                | optional      | {"type": "global"}                                                                                                                                                                                | the Google monitor resource, refer to: [MonitoredResource](https://cloud.google.com/logging/docs/reference/v2/rest/v2/MonitoredResource)                                         |
-| log_id                  | optional      | apisix.apache.org%2Flogs                                                                                                                                                                          | google cloud logging id, refer to: [LogEntry](https://cloud.google.com/logging/docs/reference/v2/rest/v2/LogEntry)                                                                     |
-| max_retry_count         | optional      | 0                                                                                                                                                                                                 | max number of retries before removing from the processing pipe line                                                                                                              |
-| retry_delay             | optional      | 1                                                                                                                                                                                                 | number of seconds the process execution should be delayed if the execution fails                                                                                                 |
-| buffer_duration         | optional      | 60                                                                                                                                                                                                | max age in seconds of the oldest entry in a batch before the batch must be processed                                                                                             |
-| inactive_timeout        | optional      | 10                                                                                                                                                                                                | max age in seconds when the buffer will be flushed if inactive                                                                                                                   |
-| batch_max_size          | optional      | 100                                                                                                                                                                                               | max size of each batch                                                                                                                                                           |
+| Name                    | Required | Default                                                                                                                                                                                              | Description                                                                                                                                                        |
+|-------------------------|----------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| auth_config             | True     |                                                                                                                                                                                                      | Either `auth_config` or `auth_file` must be provided.                                                                                                              |
+| auth_config.private_key | True     |                                                                                                                                                                                                      | Private key of the Google Cloud service account.                                                                                                                   |
+| auth_config.project_id  | True     |                                                                                                                                                                                                      | Project ID in the Google Cloud service account.                                                                                                                    |
+| auth_config.token_uri   | True    | https://oauth2.googleapis.com/token                                                                                                                                                                  | Token URI of the Google Cloud service account.                                                                                                                     |
+| auth_config.entries_uri | False    | https://logging.googleapis.com/v2/entries:write                                                                                                                                                      | Google Cloud Logging Service API.                                                                                                                                  |
+| auth_config.scopes      | False    | ["https://www.googleapis.com/auth/logging.read", "https://www.googleapis.com/auth/logging.write", "https://www.googleapis.com/auth/logging.admin", "https://www.googleapis.com/auth/cloud-platform"] | Access scopes of the Google Cloud service account. See [OAuth 2.0 Scopes for Google APIs](https://developers.google.com/identity/protocols/oauth2/scopes#logging). |
+| auth_file               | True     |                                                                                                                                                                                                      | Path to the Google Cloud service account authentication JSON file. Either `auth_config` or `auth_file` must be provided.                                           |
+| ssl_verify              | False    | true                                                                                                                                                                                                 | When set to `true`, enables SSL verification as mentioned in [OpenResty docs](https://github.com/openresty/lua-nginx-module#tcpsocksslhandshake).                  |
+| resource                | False    | {"type": "global"}                                                                                                                                                                                   | Google monitor resource. See [MonitoredResource](https://cloud.google.com/logging/docs/reference/v2/rest/v2/MonitoredResource) for more details.                   |
+| log_id                  | False    | apisix.apache.org%2Flogs                                                                                                                                                                             | Google Cloud logging ID. See [LogEntry](https://cloud.google.com/logging/docs/reference/v2/rest/v2/LogEntry) for details.                                          |
+| log_format       | False    | {"host": "$host", "@timestamp": "$time_iso8601", "client_ip": "$remote_addr"} | Log format declared as key value pairs in JSON format. Values only support strings. [APISIX](../apisix-variable.md) or [Nginx](http://nginx.org/en/docs/varindex.html) variables can be used by prefixing the string with `$`. |
 
-## How To Enable
+NOTE: `encrypt_fields = {"auth_config.private_key"}` is also defined in the schema, which means that the field will be stored encrypted in etcd. See [encrypted storage fields](../plugin-develop.md#encrypted-storage-fields).
 
-The following is an example of how to enable the `google-cloud-logging` for a specific route.
+This Plugin supports using batch processors to aggregate and process entries (logs/data) in a batch. This avoids the need for frequently submitting the data. The batch processor submits data every `5` seconds or when the data in the queue reaches `1000`. See [Batch Processor](../batch-processor.md#configuration) for more information or setting your custom configuration.
+
+## Metadata
+
+You can also set the format of the logs by configuring the Plugin metadata. The following configurations are available:
+
+| Name       | Type   | Required | Default                                                                       | Description                                                                                                                                                                                                                                             |
+| ---------- | ------ | -------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| log_format | object | False    | {"host": "$host", "@timestamp": "$time_iso8601", "client_ip": "$remote_addr"} | Log format declared as key value pairs in JSON format. Values only support strings. [APISIX](../apisix-variable.md) or [Nginx](http://nginx.org/en/docs/varindex.html) variables can be used by prefixing the string with `$`. |
+
+:::info IMPORTANT
+
+Configuring the Plugin metadata is global in scope. This means that it will take effect on all Routes and Services which use the `google-cloud-logging` Plugin.
+
+:::
+
+The example below shows how you can configure through the Admin API:
+
+```shell
+curl http://127.0.0.1:9180/apisix/admin/plugin_metadata/google-cloud-logging -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+{
+    "log_format": {
+        "host": "$host",
+        "@timestamp": "$time_iso8601",
+        "client_ip": "$remote_addr"
+    }
+}'
+```
+
+With this configuration, your logs would be formatted as shown below:
+
+```json
+{"partialSuccess":false,"entries":[{"jsonPayload":{"client_ip":"127.0.0.1","host":"localhost","@timestamp":"2023-01-09T14:47:25+08:00","route_id":"1"},"resource":{"type":"global"},"insertId":"942e81f60b9157f0d46bc9f5a8f0cc40","logName":"projects/apisix/logs/apisix.apache.org%2Flogs","timestamp":"2023-01-09T14:47:25+08:00","labels":{"source":"apache-apisix-google-cloud-logging"}}]}
+```
+
+## Enabling the Plugin
 
 ### Full configuration
 
+The example below shows a complete configuration of the Plugin on a specific Route:
+
 ```shell
-curl http://127.0.0.1:9080/apisix/admin/routes/1 -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+curl http://127.0.0.1:9180/apisix/admin/routes/1 -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
 {
     "plugins": {
         "google-cloud-logging": {
@@ -99,10 +126,12 @@ curl http://127.0.0.1:9080/apisix/admin/routes/1 -H 'X-API-KEY: edd1c9f034335f13
 }'
 ```
 
-### Minimize configuration
+### Minimal configuration
+
+The example below shows a bare minimum configuration of the Plugin on a Route:
 
 ```shell
-curl http://127.0.0.1:9080/apisix/admin/routes/1 -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+curl http://127.0.0.1:9180/apisix/admin/routes/1 -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
 {
     "plugins": {
         "google-cloud-logging": {
@@ -122,27 +151,22 @@ curl http://127.0.0.1:9080/apisix/admin/routes/1 -H 'X-API-KEY: edd1c9f034335f13
 }'
 ```
 
-## Test Plugin
+## Example usage
 
-* Success
+Now, if you make a request to APISIX, it will be logged in your Google Cloud Logging Service.
 
 ```shell
-$ curl -i http://127.0.0.1:9080/hello
-HTTP/1.1 200 OK
-...
-hello, world
+curl -i http://127.0.0.1:9080/hello
 ```
 
-* Login to Google Cloud to view logging service
-
-[Google Cloud Logging Service](https://console.cloud.google.com/logs/viewer)
+You can then login and view the logs in [Google Cloud Logging Service](https://console.cloud.google.com/logs/viewer).
 
 ## Disable Plugin
 
-Disabling the `google-cloud-logging` plugin is very simple, just remove the `JSON` configuration corresponding to `google-cloud-logging`.
+To disable the `google-cloud-logging` Plugin, you can delete the corresponding JSON configuration from the Plugin configuration. APISIX will automatically reload and you do not have to restart for this to take effect.
 
 ```shell
-$ curl http://127.0.0.1:9080/apisix/admin/routes/1 -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+curl http://127.0.0.1:9180/apisix/admin/routes/1 -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
 {
     "uri": "/hello",
     "plugins": {},

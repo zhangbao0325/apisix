@@ -29,10 +29,6 @@ repeat_each(1);
 
 add_block_preprocessor(sub {
     my ($block) = @_;
-
-    if ((!defined $block->error_log) && (!defined $block->no_error_log)) {
-        $block->set_value("no_error_log", "[error]");
-    }
 });
 
 run_tests();
@@ -100,7 +96,7 @@ __DATA__
                     depth = 2,
                 }
             }
-            local code, body = t.test('/apisix/admin/ssl/1',
+            local code, body = t.test('/apisix/admin/ssls/1',
                 ngx.HTTP_PUT,
                 json.encode(data)
             )

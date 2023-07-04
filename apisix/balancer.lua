@@ -18,6 +18,7 @@ local require           = require
 local balancer          = require("ngx.balancer")
 local core              = require("apisix.core")
 local priority_balancer = require("apisix.balancer.priority")
+local apisix_upstream   = require("apisix.upstream")
 local ipairs            = ipairs
 local is_http           = ngx.config.subsystem == "http"
 local enable_keepalive = balancer.enable_keepalive and is_http
@@ -25,6 +26,7 @@ local set_more_tries   = balancer.set_more_tries
 local get_last_failure = balancer.get_last_failure
 local set_timeouts     = balancer.set_timeouts
 local ngx_now          = ngx.now
+local str_byte         = string.byte
 
 
 local module_name = "balancer"
@@ -176,6 +178,16 @@ local function set_balancer_opts(route, ctx)
 end
 
 
+local function parse_server_for_upstream_host(picked_server, upstream_scheme)
+    local standard_port = apisix_upstream.scheme_to_port[upstream_scheme]
+    local host = picked_server.domain or picked_server.host
+    if upstream_scheme and (not standard_port or standard_port ~= picked_server.port) then
+        host = host .. ":" .. picked_server.port
+    end
+    return host
+end
+
+
 -- pick_server will be called:
 -- 1. in the access phase so that we can set headers according to the picked server
 -- 2. each time we need to retry upstream
@@ -184,11 +196,18 @@ local function pick_server(route, ctx)
     core.log.info("ctx: ", core.json.delay_encode(ctx, true))
     local up_conf = ctx.upstream_conf
 
+    for _, node in ipairs(up_conf.nodes) do
+        if core.utils.parse_ipv6(node.host) and str_byte(node.host, 1) ~= str_byte("[") then
+            node.host = '[' .. node.host .. ']'
+        end
+    end
+
     local nodes_count = #up_conf.nodes
     if nodes_count == 1 then
         local node = up_conf.nodes[1]
         ctx.balancer_ip = node.host
         ctx.balancer_port = node.port
+        node.upstream_host = parse_server_for_upstream_host(node, ctx.upstream_scheme)
         return node
     end
 
@@ -250,6 +269,7 @@ local function pick_server(route, ctx)
     ctx.balancer_ip = res.host
     ctx.balancer_port = res.port
     ctx.server_picker = server_picker
+    res.upstream_host = parse_server_for_upstream_host(res, ctx.upstream_scheme)
 
     return res
 end
@@ -289,7 +309,22 @@ do
             local size = keepalive_pool.size
             local requests = keepalive_pool.requests
 
+            core.table.clear(pool_opt)
             pool_opt.pool_size = size
+
+            local scheme = up_conf.scheme
+            local pool = scheme .. "#" .. server.host .. "#" .. server.port
+            -- other TLS schemes don't use http balancer keepalive
+            if (scheme == "https" or scheme == "grpcs") then
+                local sni = ctx.var.upstream_host
+                pool = pool .. "#" .. sni
+
+                if up_conf.tls and up_conf.tls.client_cert then
+                    pool = pool .. "#" .. up_conf.tls.client_cert
+                end
+            end
+            pool_opt.pool = pool
+
             local ok, err = balancer.set_current_peer(server.host, server.port,
                                                       pool_opt)
             if not ok then
@@ -330,8 +365,8 @@ function _M.run(route, ctx, plugin_funcs)
 
         local header_changed
         local pass_host = ctx.pass_host
-        if pass_host == "node" and balancer.recreate_request then
-            local host = server.domain or server.host
+        if pass_host == "node" then
+            local host = server.upstream_host
             if host ~= ctx.var.upstream_host then
                 -- retried node has a different host
                 ctx.var.upstream_host = host
@@ -341,7 +376,7 @@ function _M.run(route, ctx, plugin_funcs)
 
         local _, run = plugin_funcs("before_proxy")
         -- always recreate request as the request may be changed by plugins
-        if (run or header_changed) and balancer.recreate_request then
+        if run or header_changed then
             balancer.recreate_request()
         end
     end

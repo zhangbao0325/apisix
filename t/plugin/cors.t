@@ -48,8 +48,6 @@ __DATA__
 GET /t
 --- response_body
 done
---- no_error_log
-[error]
 
 
 
@@ -79,8 +77,6 @@ GET /t
 --- response_body
 property "max_age" validation failed: wrong type: expected integer, got string
 done
---- no_error_log
-[error]
 
 
 
@@ -116,8 +112,6 @@ done
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -159,8 +153,6 @@ passed
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -194,8 +186,6 @@ passed
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -232,8 +222,6 @@ passed
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -250,8 +238,6 @@ Access-Control-Allow-Headers: *
 Access-Control-Expose-Headers: *
 Access-Control-Max-Age: 5
 Access-Control-Allow-Credentials:
---- no_error_log
-[error]
 
 
 
@@ -293,8 +279,6 @@ Access-Control-Allow-Credentials:
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -314,8 +298,6 @@ Access-Control-Allow-Headers: headr1,headr2
 Access-Control-Expose-Headers: ex-headr1,ex-headr2
 Access-Control-Max-Age: 50
 Access-Control-Allow-Credentials: true
---- no_error_log
-[error]
 
 
 
@@ -333,8 +315,6 @@ Access-Control-Allow-Headers:
 Access-Control-Expose-Headers:
 Access-Control-Max-Age:
 Access-Control-Allow-Credentials:
---- no_error_log
-[error]
 
 
 
@@ -374,8 +354,6 @@ Access-Control-Allow-Credentials:
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -398,8 +376,6 @@ Access-Control-Allow-Headers: req-header1,req-header2
 Access-Control-Expose-Headers: *
 Access-Control-Max-Age: 5
 Access-Control-Allow-Credentials:
---- no_error_log
-[error]
 
 
 
@@ -419,8 +395,6 @@ Access-Control-Allow-Headers:
 Access-Control-Expose-Headers: *
 Access-Control-Max-Age: 5
 Access-Control-Allow-Credentials:
---- no_error_log
-[error]
 
 
 
@@ -428,9 +402,6 @@ Access-Control-Allow-Credentials:
 --- request
 OPTIONS /hello HTTP/1.1
 --- response_body
-
---- no_error_log
-[error]
 
 
 
@@ -471,8 +442,6 @@ OPTIONS /hello HTTP/1.1
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -494,8 +463,6 @@ Access-Control-Allow-Headers: *
 Access-Control-Expose-Headers: *
 Access-Control-Max-Age: 5
 Access-Control-Allow-Credentials:
---- no_error_log
-[error]
 
 
 
@@ -536,8 +503,6 @@ Access-Control-Allow-Credentials:
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -550,8 +515,6 @@ Origin: https://sub.domain.com
 /headers
 --- response_headers
 Access-Control-Allow-Origin: https://sub.domain.com
---- no_error_log
-[error]
 
 
 
@@ -564,8 +527,6 @@ Origin: https://sub.domain.com
 /headers
 --- response_headers
 Access-Control-Allow-Methods: GET,POST,PUT,DELETE,PATCH,HEAD,OPTIONS,CONNECT,TRACE
---- no_error_log
-[error]
 
 
 
@@ -578,8 +539,6 @@ Origin: https://sub.domain.com
 /headers
 --- response_headers
 Access-Control-Allow-Headers: request-h
---- no_error_log
-[error]
 
 
 
@@ -592,8 +551,6 @@ Origin: https://sub.domain.com
 /headers
 --- response_headers
 Access-Control-Expose-Headers: expose-h
---- no_error_log
-[error]
 
 
 
@@ -606,8 +563,6 @@ Origin: https://sub.domain.com
 /headers
 --- response_headers
 Access-Control-Max-Age: 5
---- no_error_log
-[error]
 
 
 
@@ -620,8 +575,6 @@ Origin: https://sub.domain.com
 /headers
 --- response_headers
 Access-Control-Allow-Credentials: true
---- no_error_log
-[error]
 
 
 
@@ -654,8 +607,6 @@ GET /t
 --- error_code: 400
 --- response_body eval
 qr/failed to check the configuration of plugin cors err: you can not/
---- no_error_log
-[error]
 
 
 
@@ -688,8 +639,6 @@ GET /t
 --- error_code: 400
 --- response_body eval
 qr/failed to check the configuration of plugin cors err: you can not/
---- no_error_log
-[error]
 
 
 
@@ -722,8 +671,6 @@ GET /t
 --- error_code: 400
 --- response_body eval
 qr/failed to check the configuration of plugin cors err: you can not/
---- no_error_log
-[error]
 
 
 
@@ -799,8 +746,6 @@ qr/failed to check the configuration of plugin cors err: you can not/
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -820,8 +765,6 @@ Access-Control-Allow-Headers: headr1,headr2
 Access-Control-Expose-Headers: ex-headr1,ex-headr2
 Access-Control-Max-Age: 50
 Access-Control-Allow-Credentials: true
---- no_error_log
-[error]
 
 
 
@@ -840,8 +783,6 @@ Access-Control-Allow-Headers:
 Access-Control-Expose-Headers:
 Access-Control-Max-Age:
 Access-Control-Allow-Credentials:
---- no_error_log
-[error]
 
 
 
@@ -884,8 +825,6 @@ Access-Control-Allow-Credentials:
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -905,8 +844,6 @@ Access-Control-Allow-Headers: headr1,headr2
 Access-Control-Expose-Headers: ex-headr1,ex-headr2
 Access-Control-Max-Age: 50
 Access-Control-Allow-Credentials: true
---- no_error_log
-[error]
 
 
 
@@ -925,5 +862,68 @@ Access-Control-Allow-Headers:
 Access-Control-Expose-Headers:
 Access-Control-Max-Age:
 Access-Control-Allow-Credentials:
---- no_error_log
-[error]
+
+
+
+=== TEST 34: origin was modified by the proxy_rewrite plugin
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin").test
+            local code, body = t('/apisix/admin/routes/1',
+                 ngx.HTTP_PUT,
+                 [[{
+                    "plugins": {
+                        "cors": {
+                            "allow_origins": "http://sub.domain.com",
+                            "allow_methods": "GET,POST",
+                            "allow_headers": "headr1,headr2",
+                            "expose_headers": "ex-headr1,ex-headr2",
+                            "max_age": 50,
+                            "allow_credential": true
+                        },
+                        "proxy-rewrite": {
+                            "headers": {
+                                  "Origin": "http://example.com"
+                            }
+                        }
+                    },
+                    "upstream": {
+                        "nodes": {
+                            "127.0.0.1:1980": 1
+                        },
+                        "type": "roundrobin"
+                    },
+                    "uri": "/hello"
+                }]]
+                )
+
+            if code >= 300 then
+                ngx.status = code
+            end
+            ngx.say(body)
+        }
+    }
+--- request
+GET /t
+--- response_body
+passed
+
+
+
+=== TEST 35: origin is not affected by proxy_rewrite plugins
+--- request
+GET /hello HTTP/1.1
+--- more_headers
+Origin: http://sub.domain.com
+resp-vary: Via
+--- response_body
+hello world
+--- response_headers
+Access-Control-Allow-Origin: http://sub.domain.com
+Vary: Via, Origin
+Access-Control-Allow-Methods: GET,POST
+Access-Control-Allow-Headers: headr1,headr2
+Access-Control-Expose-Headers: ex-headr1,ex-headr2
+Access-Control-Max-Age: 50
+Access-Control-Allow-Credentials: true

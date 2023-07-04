@@ -66,8 +66,6 @@ __DATA__
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -77,8 +75,6 @@ GET /not_found
 --- error_code: 404
 --- response_body
 {"error_msg":"404 Route Not Found"}
---- no_error_log
-[error]
 
 
 
@@ -90,8 +86,6 @@ GET /hello
 Host: foo.com
 --- response_body
 hello world
---- no_error_log
-[error]
 --- error_log
 call require("apisix").http_header_filter_phase() args:{}
 call require("apisix").http_header_filter_phase() return:{}
@@ -104,6 +98,11 @@ call require("apisix").http_log_phase() return:{}
 
 === TEST 4: plugin filter log
 --- debug_config
+basic:
+  enable: true
+http_filter:
+  enable: true         # enable or disable this feature
+  enable_header_name: X-APISIX-Dynamic-Debug # the header name of dynamic enable
 hook_conf:
   enable: true                  # enable or disable this feature
   name: hook_test               # the name of module and function list
@@ -120,10 +119,35 @@ hook_test:                      # module and function list, name: hook_test
 GET /hello
 --- more_headers
 Host: foo.com
+X-APISIX-Dynamic-Debug: true
 --- response_body
 hello world
---- no_error_log
-[error]
 --- error_log
 filter(): call require("apisix.plugin").filter() args:{
 filter(): call require("apisix.plugin").filter() return:{
+
+
+
+=== TEST 5: missing hook_conf
+--- debug_config
+basic:
+  enable: true
+http_filter:
+  enable: true         # enable or disable this feature
+  enable_header_name: X-APISIX-Dynamic-Debug # the header name of dynamic enable
+
+hook_test:                      # module and function list, name: hook_test
+    apisix.plugin:              # required module name
+    - filter                    # function name
+
+#END
+--- request
+GET /hello
+--- more_headers
+Host: foo.com
+X-APISIX-Dynamic-Debug: true
+--- response_body
+hello world
+--- error_log
+read_debug_yaml(): failed to validate debug config property "hook_conf" is required
+--- wait: 3

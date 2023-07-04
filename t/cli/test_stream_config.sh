@@ -21,6 +21,7 @@
 
 echo "
 apisix:
+    enable_admin: false
     stream_proxy:
         tcp:
             - addr: 9100
@@ -38,6 +39,7 @@ echo "passed: enable stream proxy only by default"
 
 echo "
 apisix:
+    enable_admin: false
     stream_proxy:
         only: false
         tcp:
@@ -49,6 +51,22 @@ make init
 count=$(grep -c "lua_package_path" conf/nginx.conf)
 if [ "$count" -ne 2 ]; then
     echo "failed: failed to enable stream proxy and http proxy"
+    exit 1
+fi
+
+echo "
+apisix:
+    enable_admin: true
+    stream_proxy:
+        tcp:
+            - addr: 9100
+" > conf/config.yaml
+
+make init
+
+count=$(grep -c "lua_package_path" conf/nginx.conf)
+if [ "$count" -ne 2 ]; then
+    echo "failed: failed to enable stream proxy and http proxy when admin is enabled"
     exit 1
 fi
 
@@ -71,3 +89,37 @@ if ! grep "t/certs/mtls_ca.crt;" conf/nginx.conf > /dev/null; then
 fi
 
 echo "passed: set trust certificate"
+
+echo "
+apisix:
+    stream_proxy:
+        tcp:
+            - addr: 9100
+stream_plugins:
+    - ip-restriction
+" > conf/config.yaml
+
+make init
+
+if grep "plugin-limit-conn-stream" conf/nginx.conf > /dev/null; then
+    echo "failed: enable shdict on demand"
+    exit 1
+fi
+
+echo "
+apisix:
+    stream_proxy:
+        tcp:
+            - addr: 9100
+stream_plugins:
+    - limit-conn
+" > conf/config.yaml
+
+make init
+
+if ! grep "plugin-limit-conn-stream" conf/nginx.conf > /dev/null; then
+    echo "failed: enable shdict on demand"
+    exit 1
+fi
+
+echo "passed: enable shdict on demand"

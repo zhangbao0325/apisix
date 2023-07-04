@@ -1,5 +1,12 @@
 ---
 title: wolf-rbac
+keywords:
+  - Apache APISIX
+  - API Gateway
+  - Plugin
+  - wolf RBAC
+  - wolf-rbac
+description: This document contains information about the Apache APISIX wolf-rbac Plugin.
 ---
 
 <!--
@@ -21,54 +28,44 @@ title: wolf-rbac
 #
 -->
 
-## Summary
+## Description
 
-- [**Name**](#name)
-- [**Attributes**](#attributes)
-- [**Dependencies**](#dependencies)
-- [**How To Enable**](#how-to-enable)
-- [**Test Plugin**](#test-plugin)
-- [**Disable Plugin**](#disable-plugin)
-
-## Name
-
-`wolf-rbac` is an authentication and authorization (rbac) plugin. It needs to work with `consumer`. Also need to add `wolf-rbac` to a `service` or `route`.
-The rbac feature is provided by [wolf](https://github.com/iGeeky/wolf). For more information about `wolf`, please refer to [wolf documentation](https://github.com/iGeeky/wolf).
+The `wolf-rbac` Plugin provides a [role-based access control](https://en.wikipedia.org/wiki/Role-based_access_control) system with [wolf](https://github.com/iGeeky/wolf) to a Route or a Service. This Plugin can be used with a [Consumer](../terminology/consumer.md).
 
 ## Attributes
 
-| Name          | Type   | Requirement | Default                  | Valid | Description                                               |
-| ------------- | ------ | ----------- | ------------------------ | ----- | --------------------------------------------------------- |
-| server        | string | optional    | "http://127.0.0.1:12180" |       | Set the service address of `wolf-server`.                 |
-| appid         | string | optional    | "unset"                  |       | Set the app id. The app id must be added in wolf-console. |
-| header_prefix | string | optional    | "X-"                     |       | prefix of custom HTTP header. After authentication is successful, three headers will be added to the request header (for backend) and response header (for frontend): `X-UserId`, `X-Username`, `X-Nickname`. |
+| Name          | Type   | Required | Default                  | Description                                                                                                                                                                                                                 |
+|---------------|--------|----------|--------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| server        | string | False    | "http://127.0.0.1:12180" | Service address of wolf server.                                                                                                                                                                                             |
+| appid         | string | False    | "unset"                  | App id added in wolf console. This field supports saving the value in Secret Manager using the [APISIX Secret](../terminology/secret.md) resource.            |
+| header_prefix | string | False    | "X-"                     | Prefix for a custom HTTP header. After authentication is successful, three headers will be added to the request header (for backend) and response header (for frontend) namely: `X-UserId`, `X-Username`, and `X-Nickname`. |
 
 ## API
 
-This plugin will add several API:
+This Plugin will add the following endpoints when enabled:
 
-* /apisix/plugin/wolf-rbac/login
-* /apisix/plugin/wolf-rbac/change_pwd
-* /apisix/plugin/wolf-rbac/user_info
+- `/apisix/plugin/wolf-rbac/login`
+- `/apisix/plugin/wolf-rbac/change_pwd`
+- `/apisix/plugin/wolf-rbac/user_info`
 
-You may need to use [interceptors](../plugin-interceptors.md) to protect it.
+:::note
 
-## Dependencies
+You may need to use the [public-api](public-api.md) Plugin to expose this endpoint.
 
-### Install wolf and start the service
+:::
 
-[Wolf quick start](https://github.com/iGeeky/wolf/blob/master/quick-start-with-docker/README.md)
+## Pre-requisites
 
-### Add `application`, `admin`, `normal user`, `permission`, `resource` and user authorize
+To use this Plugin, you have to first [install wolf](https://github.com/iGeeky/wolf/blob/master/quick-start-with-docker/README.md) and start it.
 
-[Wolf-console usage](https://github.com/iGeeky/wolf/blob/master/docs/usage.md)
+Once you have done that you need to add `application`, `admin`, `normal user`, `permission`, `resource` and user authorize to the [wolf-console](https://github.com/iGeeky/wolf/blob/master/docs/usage.md).
 
-## How To Enable
+## Enabling the Plugin
 
-1. set a consumer and config the value of the `wolf-rbac`。
+You need to first configure the Plugin on a Consumer:
 
 ```shell
-curl http://127.0.0.1:9080/apisix/admin/consumers  -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+curl http://127.0.0.1:9180/apisix/admin/consumers  -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
 {
   "username":"wolf_rbac",
   "plugins":{
@@ -81,18 +78,16 @@ curl http://127.0.0.1:9080/apisix/admin/consumers  -H 'X-API-KEY: edd1c9f034335f
 }'
 ```
 
-You also can complete the above operations through the web interface, first add a consumer:
-![add a consumer](../../../assets/images/plugin/wolf-rbac-1.png)
+:::note
 
-Then add the wolf-rbac plugin to the consumer page:
-![enable wolf-rbac plugin](../../../assets/images/plugin/wolf-rbac-2.png)
+The `appid` added in the configuration should already exist in wolf.
 
-Notes: The `appid` filled in above needs to already exist in the wolf system.
+:::
 
-1. Add a `Route` or `Service` and enable the wolf-rbac plugin.
+You can now add the Plugin to a Route or a Service:
 
 ```shell
-curl http://127.0.0.1:9080/apisix/admin/routes/1  -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+curl http://127.0.0.1:9180/apisix/admin/routes/1  -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
 {
     "methods": ["GET"],
     "uri": "/*",
@@ -108,20 +103,39 @@ curl http://127.0.0.1:9080/apisix/admin/routes/1  -H 'X-API-KEY: edd1c9f034335f1
 }'
 ```
 
-## Test Plugin
+You can also use the [APISIX Dashboard](/docs/dashboard/USER_GUIDE) to complete the operation through a web UI.
 
-#### Login and get `wolf-rbac` token:
+<!--
+![add a consumer](https://raw.githubusercontent.com/apache/apisix/master/docs/assets/images/plugin/wolf-rbac-1.png)
 
-The following `appid`, `username`, and `password` must be real ones in the wolf system.
-`authType` is the authentication type, `1` is password authentication, `2` is `LDAP` authentication. The default is `1`.  `wolf` supports `LDAP` authentication since version 0.5.0
+![enable wolf-rbac plugin](https://raw.githubusercontent.com/apache/apisix/master/docs/assets/images/plugin/wolf-rbac-2.png)
+-->
 
-* Login as `POST application/json`
+## Example usage
+
+You can use the `public-api` Plugin to expose the API:
+
+```shell
+curl http://127.0.0.1:9180/apisix/admin/routes/wal -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+{
+    "uri": "/apisix/plugin/wolf-rbac/login",
+    "plugins": {
+        "public-api": {}
+    }
+}'
+```
+
+Similarly, you can setup the Routes for `change_pwd` and `user_info`.
+
+You can now login and get a wolf `rbac_token`:
 
 ```shell
 curl http://127.0.0.1:9080/apisix/plugin/wolf-rbac/login -i \
 -H "Content-Type: application/json" \
 -d '{"appid": "restful", "username":"test", "password":"user-password", "authType":1}'
+```
 
+```shell
 HTTP/1.1 200 OK
 Date: Wed, 24 Jul 2019 10:33:31 GMT
 Content-Type: text/plain
@@ -131,7 +145,15 @@ Server: APISIX web server
 {"rbac_token":"V1#restful#eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6NzQ5LCJ1c2VybmFtZSI6InRlc3QiLCJtYW5hZ2VyIjoiIiwiYXBwaWQiOiJyZXN0ZnVsIiwiaWF0IjoxNTc5NDQ5ODQxLCJleHAiOjE1ODAwNTQ2NDF9.n2-830zbhrEh6OAxn4K_yYtg5pqfmjpZAjoQXgtcuts","user_info":{"nickname":"test","username":"test","id":"749"}}
 ```
 
-* Login as `POST x-www-form-urlencoded`
+:::note
+
+The `appid`, `username`, and `password` must be configured in the wolf system.
+
+`authType` is the authentication type—1 for password authentication (default) and 2 for LDAP authentication (v0.5.0+).
+
+:::
+
+You can also make a post request with `x-www-form-urlencoded` instead of JSON:
 
 ```shell
 curl http://127.0.0.1:9080/apisix/plugin/wolf-rbac/login -i \
@@ -139,71 +161,79 @@ curl http://127.0.0.1:9080/apisix/plugin/wolf-rbac/login -i \
 -d 'appid=restful&username=test&password=user-password'
 ```
 
-#### try request with token
+Now you can test the Route:
 
-* without token
+- without token:
 
 ```shell
 curl http://127.0.0.1:9080/ -H"Host: www.baidu.com" -i
+```
 
+```
 HTTP/1.1 401 Unauthorized
 ...
 {"message":"Missing rbac token in request"}
 ```
 
-* request header(Authorization) with token:
+- with token in `Authorization` header:
 
 ```shell
 curl http://127.0.0.1:9080/ -H"Host: www.baidu.com" \
 -H 'Authorization: V1#restful#eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6NzQ5LCJ1c2VybmFtZSI6InRlc3QiLCJtYW5hZ2VyIjoiIiwiYXBwaWQiOiJyZXN0ZnVsIiwiaWF0IjoxNTc5NDQ5ODQxLCJleHAiOjE1ODAwNTQ2NDF9.n2-830zbhrEh6OAxn4K_yYtg5pqfmjpZAjoQXgtcuts' -i
+```
 
+```shell
 HTTP/1.1 200 OK
 
 <!DOCTYPE html>
 ```
 
-* request header(x-rbac-token) with token:
+- with token in `x-rbac-token` header:
 
 ```shell
 curl http://127.0.0.1:9080/ -H"Host: www.baidu.com" \
 -H 'x-rbac-token: V1#restful#eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6NzQ5LCJ1c2VybmFtZSI6InRlc3QiLCJtYW5hZ2VyIjoiIiwiYXBwaWQiOiJyZXN0ZnVsIiwiaWF0IjoxNTc5NDQ5ODQxLCJleHAiOjE1ODAwNTQ2NDF9.n2-830zbhrEh6OAxn4K_yYtg5pqfmjpZAjoQXgtcuts' -i
+```
 
-
+```shell
 HTTP/1.1 200 OK
 
 <!DOCTYPE html>
 ```
 
-* request params with token:
+- with token in request parameters:
 
 ```shell
 curl 'http://127.0.0.1:9080?rbac_token=V1%23restful%23eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6NzQ5LCJ1c2VybmFtZSI6InRlc3QiLCJtYW5hZ2VyIjoiIiwiYXBwaWQiOiJyZXN0ZnVsIiwiaWF0IjoxNTc5NDQ5ODQxLCJleHAiOjE1ODAwNTQ2NDF9.n2-830zbhrEh6OAxn4K_yYtg5pqfmjpZAjoQXgtcuts' -H"Host: www.baidu.com" -i
+```
 
-
+```shell
 HTTP/1.1 200 OK
 
 <!DOCTYPE html>
 ```
 
-* request cookie with token:
+- with token in cookie:
 
 ```shell
 curl http://127.0.0.1:9080 -H"Host: www.baidu.com" \
 --cookie x-rbac-token=V1#restful#eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6NzQ5LCJ1c2VybmFtZSI6InRlc3QiLCJtYW5hZ2VyIjoiIiwiYXBwaWQiOiJyZXN0ZnVsIiwiaWF0IjoxNTc5NDQ5ODQxLCJleHAiOjE1ODAwNTQ2NDF9.n2-830zbhrEh6OAxn4K_yYtg5pqfmjpZAjoQXgtcuts -i
+```
 
-
+```
 HTTP/1.1 200 OK
 
 <!DOCTYPE html>
 ```
 
-#### Get `RBAC` user information
+And to get a user information:
 
 ```shell
 curl http://127.0.0.1:9080/apisix/plugin/wolf-rbac/user_info \
 --cookie x-rbac-token=V1#restful#eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6NzQ5LCJ1c2VybmFtZSI6InRlc3QiLCJtYW5hZ2VyIjoiIiwiYXBwaWQiOiJyZXN0ZnVsIiwiaWF0IjoxNTc5NDQ5ODQxLCJleHAiOjE1ODAwNTQ2NDF9.n2-830zbhrEh6OAxn4K_yYtg5pqfmjpZAjoQXgtcuts -i
+```
 
-
+```shell
 HTTP/1.1 200 OK
 {
     "user_info":{
@@ -222,27 +252,26 @@ HTTP/1.1 200 OK
 }
 ```
 
-#### Change 'RBAC' user password
+And to change a user's password:
 
 ```shell
 curl http://127.0.0.1:9080/apisix/plugin/wolf-rbac/change_pwd \
 -H "Content-Type: application/json" \
 --cookie x-rbac-token=V1#restful#eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6NzQ5LCJ1c2VybmFtZSI6InRlc3QiLCJtYW5hZ2VyIjoiIiwiYXBwaWQiOiJyZXN0ZnVsIiwiaWF0IjoxNTc5NDQ5ODQxLCJleHAiOjE1ODAwNTQ2NDF9.n2-830zbhrEh6OAxn4K_yYtg5pqfmjpZAjoQXgtcuts -i \
 -X PUT -d '{"oldPassword": "old password", "newPassword": "new password"}'
+```
 
-
+```shell
 HTTP/1.1 200 OK
 {"message":"success to change password"}
 ```
 
 ## Disable Plugin
 
-When you want to disable the `wolf-rbac` plugin, it is very simple,
- you can delete the corresponding json configuration in the plugin configuration,
-  no need to restart the service, it will take effect immediately:
+To disable the `wolf-rbac` Plugin, you can delete the corresponding JSON configuration from the Plugin configuration. APISIX will automatically reload and you do not have to restart for this to take effect.
 
 ```shell
-curl http://127.0.0.1:9080/apisix/admin/routes/1  -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
+curl http://127.0.0.1:9180/apisix/admin/routes/1  -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -d '
 {
     "methods": ["GET"],
     "uri": "/*",

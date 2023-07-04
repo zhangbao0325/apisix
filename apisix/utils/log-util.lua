@@ -15,6 +15,7 @@
 -- limitations under the License.
 --
 local core = require("apisix.core")
+local plugin = require("apisix.plugin")
 local expr = require("resty.expr.v1")
 local ngx  = ngx
 local pairs = pairs
@@ -24,6 +25,7 @@ local str_byte = string.byte
 local math_floor = math.floor
 local ngx_update_time = ngx.update_time
 local req_get_body_data = ngx.req.get_body_data
+local is_http = ngx.config.subsystem == "http"
 
 local lru_log_format = core.lrucache.new({
     ttl = 300, count = 512
@@ -71,7 +73,37 @@ local function get_custom_format_log(ctx, format)
     end
     return entry
 end
+-- export the log getter so we can mock in tests
 _M.get_custom_format_log = get_custom_format_log
+
+
+-- for test
+function _M.inject_get_custom_format_log(f)
+    get_custom_format_log = f
+    _M.get_custom_format_log = f
+end
+
+
+local function latency_details_in_ms(ctx)
+    local latency = (ngx_now() - ngx.req.start_time()) * 1000
+    local upstream_latency, apisix_latency = nil, latency
+
+    if ctx.var.upstream_response_time then
+        upstream_latency = ctx.var.upstream_response_time * 1000
+        apisix_latency = apisix_latency - upstream_latency
+
+        -- The latency might be negative, as Nginx uses different time measurements in
+        -- different metrics.
+        -- See https://github.com/apache/apisix/issues/5146#issuecomment-928919399
+        if apisix_latency < 0 then
+            apisix_latency = 0
+        end
+    end
+
+    return latency, upstream_latency, apisix_latency
+end
+_M.latency_details_in_ms = latency_details_in_ms
+
 
 local function get_full_log(ngx, conf)
     local ctx = ngx.ctx.api_ctx
@@ -95,6 +127,8 @@ local function get_full_log(ngx, conf)
             username = ctx.consumer.username
         }
     end
+
+    local latency, upstream_latency, apisix_latency = latency_details_in_ms(ctx)
 
     local log =  {
         request = {
@@ -120,7 +154,9 @@ local function get_full_log(ngx, conf)
         consumer = consumer,
         client_ip = core.request.get_remote_client_ip(ngx.ctx.api_ctx),
         start_time = ngx.req.start_time() * 1000,
-        latency = (ngx_now() - ngx.req.start_time()) * 1000
+        latency = latency,
+        upstream_latency = upstream_latency,
+        apisix_latency = apisix_latency
     }
 
     if ctx.resp_body then
@@ -167,6 +203,39 @@ end
 _M.get_full_log = get_full_log
 
 
+-- for test
+function _M.inject_get_full_log(f)
+    get_full_log = f
+    _M.get_full_log = f
+end
+
+
+function _M.get_log_entry(plugin_name, conf, ctx)
+    local metadata = plugin.plugin_metadata(plugin_name)
+    core.log.info("metadata: ", core.json.delay_encode(metadata))
+
+    local entry
+    local customized = false
+
+    local has_meta_log_format = metadata and metadata.value.log_format
+        and core.table.nkeys(metadata.value.log_format) > 0
+
+    if conf.log_format or has_meta_log_format then
+        customized = true
+        entry = get_custom_format_log(ctx, conf.log_format or metadata.value.log_format)
+    else
+        if is_http then
+            entry = get_full_log(ngx, conf)
+        else
+            -- get_full_log doesn't work in stream
+            core.log.error(plugin_name, "'s log_format is not set")
+        end
+    end
+
+    return entry, customized
+end
+
+
 function _M.get_req_original(ctx, conf)
     local headers = {
         ctx.var.request, "\r\n"
@@ -182,26 +251,6 @@ function _M.get_req_original(ctx, conf)
     end
 
     return core.table.concat(headers, "")
-end
-
-
-function _M.latency_details_in_ms(ctx)
-    local latency = (ngx_now() - ngx.req.start_time()) * 1000
-    local upstream_latency, apisix_latency = nil, latency
-
-    if ctx.var.upstream_response_time then
-        upstream_latency = ctx.var.upstream_response_time * 1000
-        apisix_latency = apisix_latency - upstream_latency
-
-        -- The latency might be negative, as Nginx uses different time measurements in
-        -- different metrics.
-        -- See https://github.com/apache/apisix/issues/5146#issuecomment-928919399
-        if apisix_latency < 0 then
-            apisix_latency = 0
-        end
-    end
-
-    return latency, upstream_latency, apisix_latency
 end
 
 

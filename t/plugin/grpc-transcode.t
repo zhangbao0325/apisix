@@ -42,7 +42,7 @@ __DATA__
         content_by_lua_block {
             local t = require("lib.test_admin").test
             local etcd = require("apisix.core.etcd")
-            local code, body = t('/apisix/admin/proto/1',
+            local code, body = t('/apisix/admin/protos/1',
                  ngx.HTTP_PUT,
                  [[{
                     "content" : "syntax = \"proto3\";
@@ -64,7 +64,7 @@ __DATA__
             end
             ngx.say(body)
 
-            local res = assert(etcd.get('/proto/1'))
+            local res = assert(etcd.get('/protos/1'))
             local create_time = res.body.node.value.create_time
             assert(create_time ~= nil, "create_time is nil")
             local update_time = res.body.node.value.update_time
@@ -76,8 +76,6 @@ __DATA__
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -86,7 +84,7 @@ passed
     location /t {
         content_by_lua_block {
             local t = require("lib.test_admin").test
-            local code, body = t('/apisix/admin/proto/2',
+            local code, body = t('/apisix/admin/protos/2',
                  ngx.HTTP_PUT,
                  [[{
                     "content" : "syntax = \"proto3\";
@@ -113,8 +111,6 @@ passed
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -123,7 +119,7 @@ passed
     location /t {
         content_by_lua_block {
             local t = require("lib.test_admin").test
-            local code, body = t('/apisix/admin/proto/2',
+            local code, body = t('/apisix/admin/protos/2',
                  ngx.HTTP_DELETE
                 )
 
@@ -137,8 +133,6 @@ passed
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -179,8 +173,6 @@ passed
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -189,8 +181,6 @@ passed
 GET /grpctest?name=world
 --- response_body eval
 qr/\{"message":"Hello world"\}/
---- no_error_log
-[error]
 
 
 
@@ -200,8 +190,6 @@ POST /grpctest
 name=world
 --- response_body eval
 qr/\{"message":"Hello world"\}/
---- no_error_log
-[error]
 
 
 
@@ -213,8 +201,6 @@ POST /grpctest
 Content-Type: application/json
 --- response_body eval
 qr/\{"message":"Hello world"\}/
---- no_error_log
-[error]
 
 
 
@@ -254,8 +240,6 @@ qr/\{"message":"Hello world"\}/
 --- request
 GET /t
 --- error_code: 400
---- no_error_log
-[error]
 
 
 
@@ -296,8 +280,6 @@ GET /t
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -317,7 +299,7 @@ Connection refused) while connecting to upstream
     location /t {
         content_by_lua_block {
             local t = require("lib.test_admin").test
-            local code, body = t('/apisix/admin/proto/1',
+            local code, body = t('/apisix/admin/protos/1',
                  ngx.HTTP_PUT,
                  [[{
                     "content" : "syntax = \"proto3\";
@@ -354,8 +336,6 @@ Connection refused) while connecting to upstream
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -397,8 +377,6 @@ passed
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -407,8 +385,6 @@ passed
 GET /grpc_plus?a=1&b=2
 --- response_body eval
 qr/\{"result":3\}/
---- no_error_log
-[error]
 
 
 
@@ -417,8 +393,6 @@ qr/\{"result":3\}/
 GET /grpc_plus?a=1&b=2251799813685260
 --- response_body eval
 qr/\{"result":"#2251799813685261"\}/
---- no_error_log
-[error]
 
 
 
@@ -459,8 +433,6 @@ qr/\{"result":"#2251799813685261"\}/
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -469,8 +441,6 @@ passed
 GET /grpc_deadline?name=apisix
 --- response_body eval
 qr/\{"message":"Hello apisix"\}/
---- no_error_log
-[error]
 
 
 
@@ -511,8 +481,6 @@ qr/\{"message":"Hello apisix"\}/
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -552,8 +520,6 @@ GET /t
 --- error_code: 400
 --- response_body
 {"error_msg":"failed to check the configuration of plugin grpc-transcode err: property \"method\" is required"}
---- no_error_log
-[error]
 
 
 
@@ -562,7 +528,7 @@ GET /t
     location /t {
         content_by_lua_block {
             local t = require("lib.test_admin").test
-            local code, body = t('/apisix/admin/proto/1',
+            local code, body = t('/apisix/admin/protos/1',
                  ngx.HTTP_PUT,
                  [[{
                     "content" : "syntax = \"proto3\";
@@ -591,8 +557,6 @@ GET /t
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -606,7 +570,6 @@ passed
                 [[{
                     "methods": ["GET", "POST"],
                     "uri": "/grpctest",
-                    "service_protocol": "grpc",
                     "plugins": {
                         "grpc-transcode": {
                             "proto_id": "1",
@@ -634,8 +597,6 @@ passed
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -659,8 +620,6 @@ passed
     }
 --- request
 GET /t
---- no_error_log
-[error]
 
 
 
@@ -669,7 +628,7 @@ GET /t
     location /t {
         content_by_lua_block {
             local t = require("lib.test_admin").test
-            local code, body = t('/apisix/admin/proto/1',
+            local code, body = t('/apisix/admin/protos/1',
                  ngx.HTTP_PUT,
                  [[{
                     "content" : "syntax = \"proto3\";
@@ -705,8 +664,6 @@ GET /t
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -718,8 +675,6 @@ POST /grpctest
 Content-Type: application/json
 --- response_body eval
 qr/"gender":"GENDER_UNKNOWN"/
---- no_error_log
-[error]
 
 
 
@@ -731,8 +686,6 @@ POST /grpctest
 Content-Type: application/json
 --- response_body eval
 qr/"gender":"GENDER_FEMALE"/
---- no_error_log
-[error]
 
 
 
@@ -744,8 +697,6 @@ POST /grpctest
 Content-Type: application/json
 --- response_body eval
 qr/"gender":"GENDER_MALE"/
---- no_error_log
-[error]
 
 
 
@@ -771,7 +722,6 @@ failed to encode request data to protobuf
                 [[{
                     "methods": ["GET", "POST"],
                     "uri": "/grpctest",
-                    "service_protocol": "grpc",
                     "plugins": {
                         "grpc-transcode": {
                             "proto_id": "1",
@@ -800,8 +750,6 @@ failed to encode request data to protobuf
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -813,5 +761,3 @@ POST /grpctest
 Content-Type: application/json
 --- response_body eval
 qr/"gender":2/
---- no_error_log
-[error]

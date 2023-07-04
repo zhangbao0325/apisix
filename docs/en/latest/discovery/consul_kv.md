@@ -23,7 +23,7 @@ title: consul_kv
 
 ## Summary
 
-For users who used [nginx-upsync-module](https://github.com/weibocom/nginx-upsync-module) and consul key value for service discovery way, as we Weibo Mobile Team, maybe need it.
+For users that are using [nginx-upsync-module](https://github.com/weibocom/nginx-upsync-module) and Consul KV as a service discovery, like the Weibo Mobile Team, this may be needed.
 
 Thanks to @fatman-x guy, who developed this module, called `consul_kv`, and its worker process data flow is below:
 ![consul kv module data flow diagram](https://user-images.githubusercontent.com/548385/107141841-6ced3e00-6966-11eb-8aa4-bc790a4ad113.png)
@@ -131,10 +131,12 @@ To avoid confusion, use the full consul key url path as service name in practice
 
 ### Upstream setting
 
+#### L7
+
 Here is an example of routing a request with a URL of "/*" to a service which named "http://127.0.0.1:8500/v1/kv/upstreams/webpages/" and use consul_kv discovery client in the registry :
 
 ```shell
-$ curl http://127.0.0.1:9080/apisix/admin/routes/1 -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -i -d '
+$ curl http://127.0.0.1:9180/apisix/admin/routes/1 -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -i -d '
 {
     "uri": "/*",
     "upstream": {
@@ -166,12 +168,30 @@ The format response as below:
       "status": 1
     },
     "key": "/apisix/routes/1"
-  },
-  "action": "set"
+  }
 }
 ```
 
 You could find more usage in the `apisix/t/discovery/consul_kv.t` file.
+
+#### L4
+
+Consul_kv service discovery also supports use in L4, the configuration method is similar to L7.
+
+```shell
+$ curl http://127.0.0.1:9180/apisix/admin/stream_routes/1 -H 'X-API-KEY: edd1c9f034335f136f87ad84b625c8f1' -X PUT -i -d '
+{
+    "remote_addr": "127.0.0.1",
+    "upstream": {
+      "scheme": "tcp",
+      "service_name": "http://127.0.0.1:8500/v1/kv/upstreams/webpages/",
+      "type": "roundrobin",
+      "discovery_type": "consul_kv"
+    }
+}'
+```
+
+You could find more usage in the `apisix/t/discovery/stream/consul_kv.t` file.
 
 ## Debugging API
 

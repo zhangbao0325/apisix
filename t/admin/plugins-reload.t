@@ -26,10 +26,6 @@ workers(2);
 add_block_preprocessor(sub {
     my ($block) = @_;
 
-    if (!defined $block->no_error_log) {
-        $block->set_value("no_error_log", "[error]");
-    }
-
     $block;
 });
 
@@ -95,9 +91,14 @@ location /t {
         ngx.sleep(0.5)
 
         local data = [[
+deployment:
+  role: traditional
+  role_traditional:
+    config_provider: etcd
+  admin:
+    admin_key: null
 apisix:
   node_listen: 1984
-  admin_key: null
 plugins:
     - jwt-auth
 stream_plugins:
@@ -133,7 +134,6 @@ filter(): [{"name":"jwt-auth"},{"name":"mqtt-proxy","stream":true}]
 --- yaml_config
 apisix:
   node_listen: 1984
-  admin_key: null
 plugins:
     - example-plugin
 plugin_attr:
@@ -145,9 +145,14 @@ location /t {
         local core = require "apisix.core"
         ngx.sleep(0.1)
         local data = [[
+deployment:
+  role: traditional
+  role_traditional:
+    config_provider: etcd
+  admin:
+    admin_key: null
 apisix:
   node_listen: 1984
-  admin_key: null
 plugins:
     - example-plugin
 plugin_attr:
@@ -165,9 +170,14 @@ plugin_attr:
         ngx.sleep(0.1)
 
         local data = [[
+deployment:
+  role: traditional
+  role_traditional:
+    config_provider: etcd
+  admin:
+    admin_key: null
 apisix:
   node_listen: 1984
-  admin_key: null
 plugins:
     - example-plugin
 plugin_attr:
@@ -207,8 +217,8 @@ example-plugin get plugin attr val: 1
 --- yaml_config
 apisix:
   node_listen: 1984
-  admin_key: null
 plugins:
+  - public-api
   - prometheus
 plugin_attr:
   prometheus:
@@ -219,15 +229,34 @@ location /t {
         local core = require "apisix.core"
         ngx.sleep(0.1)
         local t = require("lib.test_admin").test
+
+        -- setup public API route
+        local code, body = t('/apisix/admin/routes/1',
+                 ngx.HTTP_PUT,
+                 [[{
+                        "plugins": {
+                            "public-api": {}
+                        },
+                        "uri": "/apisix/metrics"
+                 }]]
+                )
+        ngx.say(code)
+
         local code, _, org_body = t('/apisix/metrics',
                                     ngx.HTTP_GET)
         ngx.say(code)
 
         local data = [[
+deployment:
+  role: traditional
+  role_traditional:
+    config_provider: etcd
+  admin:
+    admin_key: null
 apisix:
   node_listen: 1984
-  admin_key: null
 plugins:
+  - public-api
   - prometheus
 plugin_attr:
   prometheus:
@@ -249,6 +278,7 @@ plugin_attr:
 --- request
 GET /t
 --- response_body
+201
 404
 done
 200
@@ -259,7 +289,6 @@ done
 --- yaml_config
 apisix:
   node_listen: 1984
-  admin_key: null
 plugins:
   - skywalking
 plugin_attr:
@@ -276,9 +305,14 @@ location /t {
         local t = require("lib.test_admin").test
 
         local data = [[
+deployment:
+  role: traditional
+  role_traditional:
+    config_provider: etcd
+  admin:
+    admin_key: null
 apisix:
   node_listen: 1984
-  admin_key: null
 plugins:
   - prometheus
         ]]
@@ -384,3 +418,12 @@ location /t {
 GET /t
 --- response_body
 hello world
+
+
+
+=== TEST 9: wrong method to reload plugins
+--- request
+GET /apisix/admin/plugins/reload
+--- error_code: 405
+--- response_body
+{"error_msg":"please use PUT method to reload the plugins, GET method is not allowed."}

@@ -21,13 +21,21 @@ no_long_string();
 no_root_location();
 log_level("info");
 
+add_block_preprocessor(sub {
+    my ($block) = @_;
+
+    if (!$block->request) {
+        $block->set_value("request", "GET /t");
+    }
+});
+
 run_tests;
 
 __DATA__
 
 === TEST 1: get_ip
 --- config
-    location = /hello {
+    location /t {
         real_ip_header X-Real-IP;
 
         set_real_ip_from 0.0.0.0/0;
@@ -51,20 +59,16 @@ __DATA__
             ngx.say(ip)
         }
     }
---- request
-GET /hello
 --- more_headers
 X-Real-IP: 10.0.0.1
 --- response_body
 127.0.0.1
---- no_error_log
-[error]
 
 
 
 === TEST 2: get_ip
 --- config
-    location = /hello {
+    location /t {
         real_ip_header X-Real-IP;
 
         set_real_ip_from 0.0.0.0/0;
@@ -88,20 +92,16 @@ X-Real-IP: 10.0.0.1
             ngx.say(ip)
         }
     }
---- request
-GET /hello
 --- more_headers
 X-Real-IP: 10.0.0.1
 --- response_body
 127.0.0.1
---- no_error_log
-[error]
 
 
 
 === TEST 3: get_ip and X-Forwarded-For
 --- config
-    location = /hello {
+    location /t {
         real_ip_header X-Forwarded-For;
 
         set_real_ip_from 0.0.0.0/0;
@@ -125,20 +125,16 @@ X-Real-IP: 10.0.0.1
             ngx.say(ip)
         }
     }
---- request
-GET /hello
 --- more_headers
 X-Forwarded-For: 10.0.0.1
 --- response_body
 127.0.0.1
---- no_error_log
-[error]
 
 
 
 === TEST 4: get_remote_client_ip
 --- config
-    location = /hello {
+    location /t {
         real_ip_header X-Real-IP;
 
         set_real_ip_from 0.0.0.0/0;
@@ -162,20 +158,16 @@ X-Forwarded-For: 10.0.0.1
             ngx.say(ip)
         }
     }
---- request
-GET /hello
 --- more_headers
 X-Real-IP: 10.0.0.1
 --- response_body
 10.0.0.1
---- no_error_log
-[error]
 
 
 
 === TEST 5: get_remote_client_ip and X-Forwarded-For
 --- config
-    location = /hello {
+    location /t {
         real_ip_header X-Forwarded-For;
         set_real_ip_from 0.0.0.0/0;
         set_real_ip_from ::/0;
@@ -198,20 +190,16 @@ X-Real-IP: 10.0.0.1
             ngx.say(ip)
         }
     }
---- request
-GET /hello
 --- more_headers
 X-Forwarded-For: 10.0.0.1
 --- response_body
 10.0.0.1
---- no_error_log
-[error]
 
 
 
 === TEST 6: get_host
 --- config
-    location = /hello {
+    location /t {
         real_ip_header X-Real-IP;
 
         set_real_ip_from 0.0.0.0/0;
@@ -235,20 +223,16 @@ X-Forwarded-For: 10.0.0.1
             ngx.say(host)
         }
     }
---- request
-GET /hello
 --- more_headers
 X-Real-IP: 10.0.0.1
 --- response_body
 localhost
---- no_error_log
-[error]
 
 
 
 === TEST 7: get_scheme
 --- config
-    location = /hello {
+    location /t {
         real_ip_header X-Real-IP;
 
         set_real_ip_from 0.0.0.0/0;
@@ -272,20 +256,16 @@ localhost
             ngx.say(scheme)
         }
     }
---- request
-GET /hello
 --- more_headers
 X-Real-IP: 10.0.0.1
 --- response_body
 http
---- no_error_log
-[error]
 
 
 
 === TEST 8: get_port
 --- config
-    location = /hello {
+    location /t {
         real_ip_header X-Real-IP;
 
         set_real_ip_from 0.0.0.0/0;
@@ -309,20 +289,16 @@ http
             ngx.say(port)
         }
     }
---- request
-GET /hello
 --- more_headers
 X-Real-IP: 10.0.0.1
 --- response_body
 1984
---- no_error_log
-[error]
 
 
 
 === TEST 9: get_http_version
 --- config
-    location = /hello {
+    location /t {
         real_ip_header X-Real-IP;
 
         set_real_ip_from 0.0.0.0/0;
@@ -346,20 +322,16 @@ X-Real-IP: 10.0.0.1
             ngx.say(http_version)
         }
     }
---- request
-GET /hello
 --- more_headers
 X-Real-IP: 10.0.0.1
 --- response_body
 1.1
---- no_error_log
-[error]
 
 
 
 === TEST 10: set header
 --- config
-    location = /hello {
+    location /t {
         content_by_lua_block {
             local core = require("apisix.core")
             ngx.ctx.api_ctx = {}
@@ -371,19 +343,15 @@ X-Real-IP: 10.0.0.1
             ngx.say(h2)
         }
     }
---- request
-GET /hello
 --- response_body
 nil
 t
---- no_error_log
-[error]
 
 
 
 === TEST 11: get_post_args
 --- config
-    location = /hello {
+    location /t {
         content_by_lua_block {
             local core = require("apisix.core")
             local ngx_ctx = ngx.ctx
@@ -401,19 +369,17 @@ t
         }
     }
 --- request
-POST /hello
+POST /t
 c=z_z&v=x%20x
 --- response_body
 z_z
 x x
---- no_error_log
-[error]
 
 
 
 === TEST 12: get_post_args when the body is stored in temp file
 --- config
-    location = /hello {
+    location /t {
         client_body_in_file_only clean;
         content_by_lua_block {
             local core = require("apisix.core")
@@ -431,7 +397,7 @@ x x
         }
     }
 --- request
-POST /hello
+POST /t
 c=z_z&v=x%20x
 --- response_body
 nil
@@ -442,52 +408,79 @@ the post form is too large: request body in temp file not supported
 
 === TEST 13: get_method
 --- config
-    location = /hello {
+    location /t {
         content_by_lua_block {
             local core = require("apisix.core")
-            local ngx_ctx = ngx.ctx
-            local api_ctx = ngx_ctx.api_ctx
-            if api_ctx == nil then
-                api_ctx = core.tablepool.fetch("api_ctx", 0, 32)
-                ngx_ctx.api_ctx = api_ctx
-            end
-
-            core.ctx.set_vars_meta(api_ctx)
-
-            local method = core.request.get_method(ngx.ctx.api_ctx)
-            ngx.say(method)
+            ngx.say(core.request.get_method())
         }
     }
 --- request
-POST /hello
+POST /t
 --- response_body
 POST
---- no_error_log
-[error]
 
 
 
-=== TEST 14: get_path
+=== TEST 14: get header
 --- config
-    location /hello1 {
+    location /t {
         content_by_lua_block {
             local core = require("apisix.core")
-            local ngx_ctx = ngx.ctx
-            local api_ctx = ngx_ctx.api_ctx
-            if api_ctx == nil then
-                api_ctx = core.tablepool.fetch("api_ctx", 0, 32)
-                ngx_ctx.api_ctx = api_ctx
-            end
-
-            core.ctx.set_vars_meta(api_ctx)
-
-            local path = core.request.get_path(ngx.ctx.api_ctx)
-            ngx.say(path)
+            ngx.say(core.request.header(ngx.ctx, "X-101"))
         }
     }
---- request
-GET /hello1/test?a=b&b=a
+--- more_headers eval
+my $i = 1;
+my $s;
+while ($i <= 101) {
+    $s .= "X-$i:$i\n";
+    $i++;
+}
+$s
 --- response_body
-/hello1/test
---- no_error_log
-[error]
+101
+
+
+
+=== TEST 15: add header
+--- config
+    location /t {
+        content_by_lua_block {
+            local core = require("apisix.core")
+            ngx.ctx.api_ctx = {}
+            local ctx = ngx.ctx.api_ctx
+            local json = require("toolkit.json")
+            core.request.add_header(ctx, "test_header", "test")
+            local h = core.request.header(ctx, "test_header")
+            ngx.say(h)
+            core.request.add_header(ctx, "test_header", "t2")
+            local h2 = core.request.header(ctx, "test_header")
+            ngx.say(json.encode(h2))
+            core.request.add_header(ctx, "test_header", "t3")
+            local h3 = core.request.header(ctx, "test_header")
+            ngx.say(json.encode(h3))
+        }
+    }
+--- response_body
+test
+["test","t2"]
+["test","t2","t3"]
+
+
+
+=== TEST 16: call add_header with deprecated way
+--- config
+    location /t {
+        content_by_lua_block {
+            local core = require("apisix.core")
+            ngx.ctx.api_ctx = {}
+            local ctx = ngx.ctx.api_ctx
+            core.request.add_header("test_header", "test")
+            local h = core.request.header(ctx, "test_header")
+            ngx.say(h)
+        }
+    }
+--- response_body
+test
+--- error_log
+DEPRECATED: use add_header(ctx, header_name, header_value) instead

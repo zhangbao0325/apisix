@@ -40,26 +40,12 @@ __DATA__
                             "clock_skew": 10
                         }
                     }
-                }]],
-                [[{
-                    "node": {
-                        "value": {
-                            "username": "jack",
-                            "plugins": {
-                                "hmac-auth": {
-                                    "access_key": "my-access-key",
-                                    "secret_key": "my-secret-key",
-                                    "algorithm": "hmac-sha256",
-                                    "clock_skew": 10
-                                }
-                            }
-                        }
-                    },
-                    "action": "set"
                 }]]
                 )
 
-            ngx.status = code
+            if code >= 300 then
+                ngx.status = code
+            end
             ngx.say(body)
         }
     }
@@ -67,8 +53,6 @@ __DATA__
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -97,8 +81,6 @@ GET /t
 --- error_code: 400
 --- response_body eval
 qr/\{"error_msg":"invalid plugins configuration: failed to check the configuration of plugin hmac-auth err: property \\"secret_key\\" is required"\}/
---- no_error_log
-[error]
 
 
 
@@ -127,8 +109,6 @@ GET /t
 --- error_code: 400
 --- response_body eval
 qr/\{"error_msg":"invalid plugins configuration: failed to check the configuration of plugin hmac-auth err: property \\"access_key\\" is required"\}/
---- no_error_log
-[error]
 
 
 
@@ -158,8 +138,6 @@ GET /t
 --- error_code: 400
 --- response_body eval
 qr/\{"error_msg":"invalid plugins configuration: failed to check the configuration of plugin hmac-auth err: property \\"access_key\\" validation failed: string too long, expected at most 256, got 320"\}/
---- no_error_log
-[error]
 
 
 
@@ -189,8 +167,6 @@ GET /t
 --- error_code: 400
 --- response_body eval
 qr/\{"error_msg":"invalid plugins configuration: failed to check the configuration of plugin hmac-auth err: property \\"secret_key\\" validation failed: string too long, expected at most 256, got 384"\}/
---- no_error_log
-[error]
 
 
 
@@ -225,8 +201,6 @@ qr/\{"error_msg":"invalid plugins configuration: failed to check the configurati
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -235,9 +209,11 @@ passed
 GET /hello
 --- error_code: 401
 --- response_body
-{"message":"access key or signature missing"}
---- no_error_log
-[error]
+{"message":"client request can't be validated"}
+--- grep_error_log eval
+qr/client request can't be validated: [^,]+/
+--- grep_error_log_out
+client request can't be validated: access key or signature missing
 
 
 
@@ -250,9 +226,11 @@ Date: Thu, 24 Sep 2020 06:39:52 GMT
 X-HMAC-ACCESS-KEY: my-access-key
 --- error_code: 401
 --- response_body
-{"message":"algorithm missing"}
---- no_error_log
-[error]
+{"message":"client request can't be validated"}
+--- grep_error_log eval
+qr/client request can't be validated: [^,]+/
+--- grep_error_log_out
+client request can't be validated: algorithm missing
 
 
 
@@ -266,9 +244,11 @@ Date: Thu, 24 Sep 2020 06:39:52 GMT
 X-HMAC-ACCESS-KEY: sdf
 --- error_code: 401
 --- response_body
-{"message":"Invalid access key"}
---- no_error_log
-[error]
+{"message":"client request can't be validated"}
+--- grep_error_log eval
+qr/client request can't be validated: [^,]+/
+--- grep_error_log_out
+client request can't be validated: Invalid access key
 
 
 
@@ -282,9 +262,11 @@ Date: Thu, 24 Sep 2020 06:39:52 GMT
 X-HMAC-ACCESS-KEY: my-access-key
 --- error_code: 401
 --- response_body
-{"message":"algorithm ljlj not supported"}
---- no_error_log
-[error]
+{"message":"client request can't be validated"}
+--- grep_error_log eval
+qr/client request can't be validated: [^,]+/
+--- grep_error_log_out
+client request can't be validated: algorithm ljlj not supported
 
 
 
@@ -298,9 +280,11 @@ Date: Thu, 24 Sep 2020 06:39:52 GMT
 X-HMAC-ACCESS-KEY: my-access-key
 --- error_code: 401
 --- response_body
-{"message":"Clock skew exceeded"}
---- no_error_log
-[error]
+{"message":"client request can't be validated"}
+--- grep_error_log eval
+qr/client request can't be validated: [^,]+/
+--- grep_error_log_out
+client request can't be validated: Clock skew exceeded
 
 
 
@@ -313,9 +297,11 @@ X-HMAC-ALGORITHM: hmac-sha256
 X-HMAC-ACCESS-KEY: my-access-key
 --- error_code: 401
 --- response_body
-{"message":"Invalid GMT format time"}
---- no_error_log
-[error]
+{"message":"client request can't be validated"}
+--- grep_error_log eval
+qr/client request can't be validated: [^,]+/
+--- grep_error_log_out
+client request can't be validated: Invalid GMT format time
 
 
 
@@ -329,9 +315,11 @@ Date: adfsdf
 X-HMAC-ACCESS-KEY: my-access-key
 --- error_code: 401
 --- response_body
-{"message":"Invalid GMT format time"}
---- no_error_log
-[error]
+{"message":"client request can't be validated"}
+--- grep_error_log eval
+qr/client request can't be validated: [^,]+/
+--- grep_error_log_out
+client request can't be validated: Invalid GMT format time
 
 
 
@@ -391,8 +379,6 @@ location /t {
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -412,26 +398,11 @@ passed
                             "clock_skew": 0
                         }
                     }
-                }]],
-                [[{
-                    "node": {
-                        "value": {
-                            "username": "robin",
-                            "plugins": {
-                                "hmac-auth": {
-                                    "access_key": "my-access-key3",
-                                    "secret_key": "my-secret-key3",
-                                    "algorithm": "hmac-sha256",
-                                    "clock_skew": 0
-                                }
-                            }
-                        }
-                    },
-                    "action": "set"
                 }]]
                 )
-
-            ngx.status = code
+            if code >= 300 then
+                ngx.status = code
+            end
             ngx.say(body)
         }
     }
@@ -439,8 +410,6 @@ passed
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -454,9 +423,11 @@ Date: Thu, 24 Sep 2020 06:39:52 GMT
 X-HMAC-ACCESS-KEY: my-access-key3
 --- error_code: 401
 --- response_body
-{"message":"Invalid signature"}
---- no_error_log
-[error]
+{"message":"client request can't be validated"}
+--- grep_error_log eval
+qr/client request can't be validated: [^,]+/
+--- grep_error_log_out
+client request can't be validated: Invalid signature
 
 
 
@@ -476,26 +447,12 @@ X-HMAC-ACCESS-KEY: my-access-key3
                             "clock_skew": 1
                         }
                     }
-                }]],
-                [[{
-                    "node": {
-                        "value": {
-                            "username": "pony",
-                            "plugins": {
-                                "hmac-auth": {
-                                    "access_key": "my-access-key2",
-                                    "secret_key": "my-secret-key2",
-                                    "algorithm": "hmac-sha256",
-                                    "clock_skew": 1
-                                }
-                            }
-                        }
-                    },
-                    "action": "set"
                 }]]
                 )
 
-            ngx.status = code
+            if code >= 300 then
+                ngx.status = code
+            end
             ngx.say(body)
         }
     }
@@ -503,8 +460,6 @@ X-HMAC-ACCESS-KEY: my-access-key3
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -557,9 +512,11 @@ location /t {
 GET /t
 --- error_code: 401
 --- response_body eval
-qr/\{"message":"Clock skew exceeded"\}/
---- no_error_log
-[error]
+qr/{"message":"client request can't be validated"}/
+--- grep_error_log eval
+qr/client request can't be validated: [^,]+/
+--- grep_error_log_out
+client request can't be validated: Clock skew exceeded
 
 
 
@@ -623,8 +580,6 @@ location /t {
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -687,8 +642,6 @@ location /t {
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -697,9 +650,11 @@ passed
 GET /hello
 --- error_code: 401
 --- response_body
-{"message":"access key or signature missing"}
---- no_error_log
-[error]
+{"message":"client request can't be validated"}
+--- grep_error_log eval
+qr/client request can't be validated: [^,]+/
+--- grep_error_log_out
+client request can't be validated: access key or signature missing
 
 
 
@@ -719,27 +674,12 @@ GET /hello
                             "signed_headers": ["x-custom-header-a", "x-custom-header-b"]
                         }
                     }
-                }]],
-                [[{
-                    "node": {
-                        "value": {
-                            "username": "cook",
-                            "plugins": {
-                                "hmac-auth": {
-                                    "access_key": "my-access-key5",
-                                    "secret_key": "my-secret-key5",
-                                    "algorithm": "hmac-sha256",
-                                    "clock_skew": 0,
-                                    "signed_headers": ["x-custom-header-a", "x-custom-header-b"]
-                                }
-                            }
-                        }
-                    },
-                    "action": "set"
                 }]]
                 )
 
-            ngx.status = code
+            if code >= 300 then
+                ngx.status = code
+            end
             ngx.say(body)
         }
     }
@@ -747,8 +687,6 @@ GET /hello
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -799,9 +737,11 @@ location /t {
 GET /t
 --- error_code: 401
 --- response_body eval
-qr/\{"message":"Invalid signed header x-custom-header-c"\}/
---- no_error_log
-[error]
+qr/{"message":"client request can't be validated"}/
+--- grep_error_log eval
+qr/client request can't be validated: [^,]+/
+--- grep_error_log_out
+client request can't be validated: Invalid signed header x-custom-header-c
 
 
 
@@ -857,8 +797,6 @@ location /t {
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -886,5 +824,3 @@ GET /t
 --- error_code: 400
 --- response_body eval
 qr/\{"error_msg":"invalid plugins configuration: failed to check the configuration of plugin hmac-auth err: property \\"(access|secret)_key\\" is required"\}/
---- no_error_log
-[error]

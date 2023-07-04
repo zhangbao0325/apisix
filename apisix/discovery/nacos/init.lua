@@ -176,6 +176,17 @@ local function get_base_uri()
 end
 
 
+local function de_duplication(services, namespace_id, group_name, service_name, scheme)
+    for _, service in ipairs(services) do
+        if service.namespace_id == namespace_id and service.group_name == group_name
+                and service.service_name == service_name and service.scheme == scheme then
+            return true
+        end
+    end
+    return false
+end
+
+
 local function iter_and_add_service(services, values)
     if not values then
         return
@@ -200,11 +211,18 @@ local function iter_and_add_service(services, values)
         local group_name = (up.discovery_args and up.discovery_args.group_name)
                            or default_group_name
 
+        local dup = de_duplication(services, namespace_id, group_name,
+                up.service_name, up.scheme)
+        if dup then
+            goto CONTINUE
+        end
+
         if up.discovery_type == 'nacos' then
             core.table.insert(services, {
                 service_name = up.service_name,
                 namespace_id = namespace_id,
-                group_name = group_name
+                group_name = group_name,
+                scheme = up.scheme,
             })
         end
         ::CONTINUE::
@@ -218,6 +236,7 @@ local function get_nacos_services()
     -- here we use lazy load to work around circle dependency
     local get_upstreams = require('apisix.upstream').upstreams
     local get_routes = require('apisix.router').http_routes
+    local get_stream_routes = require('apisix.router').stream_routes
     local get_services = require('apisix.http.service').services
     local values = get_upstreams()
     iter_and_add_service(services, values)
@@ -225,9 +244,18 @@ local function get_nacos_services()
     iter_and_add_service(services, values)
     values = get_services()
     iter_and_add_service(services, values)
+    values = get_stream_routes()
+    iter_and_add_service(services, values)
     return services
 end
 
+local function is_grpc(scheme)
+    if scheme == 'grpc' or scheme == 'grpcs' then
+        return true
+    end
+
+    return false
+end
 
 local function fetch_full_registry(premature)
     if premature then
@@ -255,6 +283,7 @@ local function fetch_full_registry(premature)
         local data, err
         local namespace_id = service_info.namespace_id
         local group_name = service_info.group_name
+        local scheme = service_info.scheme or ''
         local namespace_param = get_namespace_param(service_info.namespace_id)
         local group_name_param = get_group_name_param(service_info.group_name)
         local query_path = instance_list_path .. service_info.service_name
@@ -281,11 +310,19 @@ local function fetch_full_registry(premature)
                 up_apps[namespace_id]
                     [group_name][service_info.service_name] = nodes
             end
-            core.table.insert(nodes, {
+
+            local node = {
                 host = host.ip,
                 port = host.port,
                 weight = host.weight or default_weight,
-            })
+            }
+
+            -- docs: https://github.com/yidongnan/grpc-spring-boot-starter/pull/496
+            if is_grpc(scheme) and host.metadata and host.metadata.gRPC_port then
+                node.port = host.metadata.gRPC_port
+            end
+
+            core.table.insert(nodes, node)
         end
 
         ::CONTINUE::

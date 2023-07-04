@@ -18,7 +18,7 @@
 #
 
 # Usage:
-# 1. pip3 install -r t/perf/requirements.txt
+# 1. pip3 install -r t/perf/requirements.txt --user
 # 2. python3 ./t/perf/test_http.py
 import http.client
 import os
@@ -37,8 +37,14 @@ def create_conf():
     with open("./conf/config-perf.yaml", "w") as f:
         conf = {
             "apisix": {
-                "config_center": "yaml",
                 "enable_admin": False,
+            },
+            "deployment": {
+                "role": "data_plane",
+                "role_data_plane": {
+                    "config_provider": "yaml",
+                }
+
             },
             "nginx_config": {
                 "worker_processes": 2
@@ -91,6 +97,16 @@ def create_conf():
         "type": "roundrobin"
     }]
 
+    # expose public api
+    routes.append({
+        "uri": "/gen_token",
+        "plugins": {
+            "public-api": {
+                "uri": "/apisix/plugin/jwt/sign"
+            }
+        },
+    })
+
     conf = {}
     conf["routes"] = routes
     conf["consumers"] = consumers
@@ -128,7 +144,7 @@ def create_env():
 class TestHTTP(unittest.TestCase):
 
     def setUp(self):
-        self.duration = os.environ.get("APISIX_PERF_DURATION", "30")
+        self.duration = os.environ.get("APISIX_PERF_DURATION", "300")
         self.n_client = os.environ.get("APISIX_PERF_CLIENT", "100")
         self.n_thread = os.environ.get("APISIX_PERF_THREAD", "2")
         self.qps = os.environ.get("APISIX_PERF_QPS", "8000")
@@ -143,7 +159,7 @@ class TestHTTP(unittest.TestCase):
         conn = http.client.HTTPConnection("127.0.0.1", port=9080)
         for i in range(RULE_SIZE):
             i = str(i)
-            conn.request("GET", "/apisix/plugin/jwt/sign?key=user-key-" + i)
+            conn.request("GET", "/gen_token?key=user-key-" + i)
             response = conn.getresponse()
             if response.status >= 300:
                 print("failed to sign, got: %s" % response.read())

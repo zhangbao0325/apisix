@@ -43,7 +43,7 @@ local function fetch_chash_hash_key(ctx, upstream)
         chash_key = ctx.var["cookie_" .. key]
     elseif hash_on == "vars_combinations" then
         local err, n_resolved
-        chash_key, err, n_resolved = core.utils.resolve_var(key, ctx.var);
+        chash_key, err, n_resolved = core.utils.resolve_var(key, ctx.var)
         if err then
             core.log.error("could not resolve vars in ", key, " error: ", err)
         end
@@ -71,11 +71,27 @@ function _M.new(up_nodes, upstream)
 
     local nodes_count = 0
     local safe_limit = 0
+    local gcd = 0
     local servers, nodes = {}, {}
+
+    for serv, weight in pairs(up_nodes) do
+        if gcd == 0 then
+            gcd = weight
+        else
+            gcd = core.math.gcd(gcd, weight)
+        end
+    end
+
+    if gcd == 0 then
+        -- all nodes' weight are 0
+        gcd = 1
+    end
+
     for serv, weight in pairs(up_nodes) do
         local id = str_gsub(serv, ":", str_null)
 
         nodes_count = nodes_count + 1
+        weight = weight / gcd
         safe_limit = safe_limit + weight
         servers[id] = serv
         nodes[id] = weight

@@ -30,6 +30,11 @@ run_tests();
 __DATA__
 
 === TEST 1: dynamic enable
+# ai module would conflict with the debug module
+--- extra_yaml_config
+plugins:
+    #- ai
+    - example-plugin
 --- debug_config eval: $::debug_config
 --- config
     location /t {
@@ -86,6 +91,11 @@ call require("apisix").http_access_phase() args:{}
 
 
 === TEST 2: dynamic enable by per request and disable after handle request
+# ai module would conflict with the debug module
+--- extra_yaml_config
+plugins:
+    #- ai
+    - example-plugin
 --- debug_config eval: $::debug_config
 --- config
     location /t {
@@ -213,6 +223,8 @@ call require("apisix").http_log_phase() return:{}
 
 === TEST 4: plugin filter log
 --- debug_config
+basic:
+  enable: true
 http_filter:
   enable: true         # enable or disable this feature
   enable_header_name: X-APISIX-Dynamic-Debug # the header name of dynamic enable
@@ -285,8 +297,6 @@ GET /t
 --- wait: 2
 --- response_body
 passed
---- no_error_log
-[error]
 --- error_log
 filter(): call require("apisix.plugin").filter() args:{
 filter(): call require("apisix.plugin").filter() return:{
@@ -295,6 +305,8 @@ filter(): call require("apisix.plugin").filter() return:{
 
 === TEST 5: multiple requests, only output logs of the request with enable_header_name
 --- debug_config
+basic:
+  enable: true
 http_filter:
   enable: true
   enable_header_name: X-APISIX-Dynamic-Debug
@@ -373,7 +385,14 @@ qr/call\srequire\(\"apisix.plugin\"\).filter\(\)\sreturn.*GET\s\/mysleep\?second
 
 
 === TEST 6: hook function with ctx as param
+# ai module would conflict with the debug module
+--- extra_yaml_config
+plugins:
+    #ai
+    - example-plugin
 --- debug_config
+basic:
+  enable: true
 http_filter:
   enable: true         # enable or disable this feature
   enable_header_name: X-APISIX-Dynamic-Debug # the header name of dynamic enable

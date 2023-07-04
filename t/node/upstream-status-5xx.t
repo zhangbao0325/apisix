@@ -55,8 +55,6 @@ __DATA__
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -65,8 +63,6 @@ passed
 GET /hello
 --- response_body
 hello world
---- no_error_log
-[error]
 --- grep_error_log eval
 qr/X-APISIX-Upstream-Status: 200/
 --- grep_error_log_out
@@ -107,8 +103,6 @@ qr/X-APISIX-Upstream-Status: 200/
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -118,8 +112,10 @@ GET /mysleep?seconds=1
 --- error_code: 504
 --- response_body eval
 qr/504 Gateway Time-out/
---- error_log
+--- response_headers
 X-APISIX-Upstream-Status: 504
+--- error_log
+Connection timed out
 
 
 
@@ -152,8 +148,6 @@ X-APISIX-Upstream-Status: 504
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -163,8 +157,10 @@ GET /hello
 --- error_code: 502
 --- response_body eval
 qr/502 Bad Gateway/
---- error_log
+--- response_headers
 X-APISIX-Upstream-Status: 502
+--- error_log
+Connection refused
 
 
 
@@ -197,8 +193,6 @@ X-APISIX-Upstream-Status: 502
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -206,10 +200,12 @@ passed
 --- request
 GET /server_error
 --- error_code: 500
---- response_body_like
-.*apisix.apache.org.*
---- error_log
+--- response_body eval
+qr/500 Internal Server Error/
+--- response_headers
 X-APISIX-Upstream-Status: 500
+--- error_log
+500 Internal Server Error
 
 
 
@@ -240,8 +236,6 @@ X-APISIX-Upstream-Status: 500
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -268,8 +262,6 @@ passed
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -313,8 +305,6 @@ qr/X-APISIX-Upstream-Status: 502, 200/
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -322,8 +312,10 @@ passed
 --- request
 GET /hello
 --- error_code: 502
---- error_log eval
+--- response_headers_raw_like eval
 qr/X-APISIX-Upstream-Status: 502, 502, 502/
+--- error_log
+Connection refused
 
 
 
@@ -357,8 +349,6 @@ qr/X-APISIX-Upstream-Status: 502, 502, 502/
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -404,8 +394,6 @@ qr/X-APISIX-Upstream-Status: 500/
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 

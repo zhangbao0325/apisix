@@ -16,10 +16,15 @@
 --
 local base_prometheus = require("prometheus")
 local core      = require("apisix.core")
+local plugin    = require("apisix.plugin")
+local control   = require("apisix.control.v1")
 local ipairs    = ipairs
+local pairs     = pairs
 local ngx       = ngx
-local ngx_capture = ngx.location.capture
 local re_gmatch = ngx.re.gmatch
+local ffi       = require("ffi")
+local C         = ffi.C
+local pcall = pcall
 local select = select
 local type = type
 local prometheus
@@ -34,9 +39,19 @@ local get_stream_routes = router.stream_routes
 local get_protos = require("apisix.plugins.grpc-transcode.proto").protos
 local service_fetch = require("apisix.http.service").get
 local latency_details = require("apisix.utils.log-util").latency_details_in_ms
+local xrpc = require("apisix.stream.xrpc")
+local unpack = unpack
+local next = next
 
 
+local ngx_capture
+if ngx.config.subsystem == "http" then
+    ngx_capture = ngx.location.capture
+end
 
+
+local plugin_name = "prometheus"
+local default_export_uri = "/apisix/prometheus/metrics"
 -- Default set of latency buckets, 1ms to 60s:
 local DEFAULT_BUCKETS = {1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 30000, 60000}
 
@@ -53,11 +68,45 @@ local function gen_arr(...)
     return inner_tab_arr
 end
 
+local extra_labels_tbl = {}
+
+local function extra_labels(name, ctx)
+    clear_tab(extra_labels_tbl)
+
+    local attr = plugin.plugin_attr("prometheus")
+    local metrics = attr.metrics
+
+    if metrics and metrics[name] and metrics[name].extra_labels then
+        local labels = metrics[name].extra_labels
+        for _, kv in ipairs(labels) do
+            local val, v = next(kv)
+            if ctx then
+                val = ctx.var[v:sub(2)]
+                if val == nil then
+                    val = ""
+                end
+            end
+            core.table.insert(extra_labels_tbl, val)
+        end
+    end
+
+    return extra_labels_tbl
+end
+
 
 local _M = {}
 
 
-function _M.init()
+local function init_stream_metrics()
+    metrics.stream_connection_total = prometheus:counter("stream_connection_total",
+        "Total number of connections handled per stream route in APISIX",
+        {"route"})
+
+    xrpc.init_metrics(prometheus)
+end
+
+
+function _M.http_init(prometheus_enabled_in_stream)
     -- todo: support hot reload, we may need to update the lua-prometheus
     -- library
     if ngx.get_phase() ~= "init" and ngx.get_phase() ~= "init_worker"  then
@@ -75,10 +124,20 @@ function _M.init()
     -- We keep the old metric names for the compatibility.
 
     -- across all services
-    prometheus = base_prometheus.init("prometheus-metrics", "apisix_")
+    local metric_prefix = "apisix_"
+    local attr = plugin.plugin_attr("prometheus")
+    if attr and attr.metric_prefix then
+        metric_prefix = attr.metric_prefix
+    end
+
+    prometheus = base_prometheus.init("prometheus-metrics", metric_prefix)
+
     metrics.connections = prometheus:gauge("nginx_http_current_connections",
             "Number of HTTP connections",
             {"state"})
+
+    metrics.requests = prometheus:gauge("http_requests_total",
+            "The total number of client requests since APISIX started")
 
     metrics.etcd_reachable = prometheus:gauge("etcd_reachable",
             "Config server etcd reachable from APISIX, 0 is unreachable")
@@ -92,6 +151,18 @@ function _M.init()
             "Etcd modify index for APISIX keys",
             {"key"})
 
+    metrics.shared_dict_capacity_bytes = prometheus:gauge("shared_dict_capacity_bytes",
+            "The capacity of each nginx shared DICT since APISIX start",
+            {"name"})
+
+    metrics.shared_dict_free_space_bytes = prometheus:gauge("shared_dict_free_space_bytes",
+            "The free space of each nginx shared DICT since APISIX start",
+            {"name"})
+
+    metrics.upstream_status = prometheus:gauge("upstream_status",
+            "Upstream status from health check",
+            {"name", "ip", "port"})
+
     -- per service
 
     -- The consumer label indicates the name of consumer corresponds to the
@@ -99,20 +170,54 @@ function _M.init()
     -- no consumer in request.
     metrics.status = prometheus:counter("http_status",
             "HTTP status codes per service in APISIX",
-            {"code", "route", "matched_uri", "matched_host", "service", "consumer", "node"})
+            {"code", "route", "matched_uri", "matched_host", "service", "consumer", "node",
+            unpack(extra_labels("http_status"))})
+
+    local buckets = DEFAULT_BUCKETS
+    if attr and attr.default_buckets then
+        buckets = attr.default_buckets
+    end
 
     metrics.latency = prometheus:histogram("http_latency",
         "HTTP request latency in milliseconds per service in APISIX",
-        {"type", "route", "service", "consumer", "node"}, DEFAULT_BUCKETS)
+        {"type", "route", "service", "consumer", "node", unpack(extra_labels("http_latency"))},
+        buckets)
 
     metrics.bandwidth = prometheus:counter("bandwidth",
             "Total bandwidth in bytes consumed per service in APISIX",
-            {"type", "route", "service", "consumer", "node"})
+            {"type", "route", "service", "consumer", "node", unpack(extra_labels("bandwidth"))})
 
+    if prometheus_enabled_in_stream then
+        init_stream_metrics()
+    end
 end
 
 
-function _M.log(conf, ctx)
+function _M.stream_init()
+    if ngx.get_phase() ~= "init" and ngx.get_phase() ~= "init_worker"  then
+        return
+    end
+
+    if not pcall(function() return C.ngx_meta_lua_ffi_shdict_udata_to_zone end) then
+        core.log.error("need to build APISIX-Base to support L4 metrics")
+        return
+    end
+
+    clear_tab(metrics)
+
+    local metric_prefix = "apisix_"
+    local attr = plugin.plugin_attr("prometheus")
+    if attr and attr.metric_prefix then
+        metric_prefix = attr.metric_prefix
+    end
+
+    prometheus = base_prometheus.init("prometheus-metrics", metric_prefix)
+
+    init_stream_metrics()
+end
+
+
+function _M.http_log(conf, ctx)
     local vars = ctx.var
 
     local route_id = ""
@@ -142,25 +247,49 @@ function _M.log(conf, ctx)
 
     metrics.status:inc(1,
         gen_arr(vars.status, route_id, matched_uri, matched_host,
-                service_id, consumer_name, balancer_ip))
+                service_id, consumer_name, balancer_ip,
+                unpack(extra_labels("http_status", ctx))))
 
     local latency, upstream_latency, apisix_latency = latency_details(ctx)
+    local latency_extra_label_values = extra_labels("http_latency", ctx)
+
     metrics.latency:observe(latency,
-        gen_arr("request", route_id, service_id, consumer_name, balancer_ip))
+        gen_arr("request", route_id, service_id, consumer_name, balancer_ip,
+        unpack(latency_extra_label_values)))
 
     if upstream_latency then
         metrics.latency:observe(upstream_latency,
-            gen_arr("upstream", route_id, service_id, consumer_name, balancer_ip))
+            gen_arr("upstream", route_id, service_id, consumer_name, balancer_ip,
+            unpack(latency_extra_label_values)))
     end
 
     metrics.latency:observe(apisix_latency,
-        gen_arr("apisix", route_id, service_id, consumer_name, balancer_ip))
+        gen_arr("apisix", route_id, service_id, consumer_name, balancer_ip,
+        unpack(latency_extra_label_values)))
+
+    local bandwidth_extra_label_values = extra_labels("bandwidth", ctx)
 
     metrics.bandwidth:inc(vars.request_length,
-        gen_arr("ingress", route_id, service_id, consumer_name, balancer_ip))
+        gen_arr("ingress", route_id, service_id, consumer_name, balancer_ip,
+        unpack(bandwidth_extra_label_values)))
 
     metrics.bandwidth:inc(vars.bytes_sent,
-        gen_arr("egress", route_id, service_id, consumer_name, balancer_ip))
+        gen_arr("egress", route_id, service_id, consumer_name, balancer_ip,
+        unpack(bandwidth_extra_label_values)))
+end
+
+
+function _M.stream_log(conf, ctx)
+    local route_id = ""
+    local matched_route = ctx.matched_route and ctx.matched_route.value
+    if matched_route then
+        route_id = matched_route.id
+        if conf.prefer_name == true then
+            route_id = matched_route.name or route_id
+        end
+    end
+
+    metrics.stream_connection_total:inc(1, gen_arr(route_id))
 end
 
 
@@ -192,9 +321,12 @@ local function nginx_status()
             break
         end
 
-        label_values[1] = name
-        metrics.connections:set(val[0], label_values)
-
+        if name == "total" then
+            metrics.requests:set(val[0])
+        else
+            label_values[1] = name
+            metrics.connections:set(val[0], label_values)
+        end
     end
 end
 
@@ -278,12 +410,25 @@ local function etcd_modify_index()
 end
 
 
-function _M.collect()
+local function shared_dict_status()
+    local name = {}
+    for shared_dict_name, shared_dict in pairs(ngx.shared) do
+        name[1] = shared_dict_name
+        metrics.shared_dict_capacity_bytes:set(shared_dict:capacity(), name)
+        metrics.shared_dict_free_space_bytes:set(shared_dict:free_space(), name)
+    end
+end
+
+
+local function collect(ctx, stream_only)
     if not prometheus or not metrics then
         core.log.error("prometheus: plugin is not initialized, please make sure ",
                      " 'prometheus_metrics' shared dict is present in nginx template")
         return 500, {message = "An unexpected error occurred"}
     end
+
+    -- collect ngx.shared.DICT status
+    shared_dict_status()
 
     -- across all services
     nginx_status()
@@ -294,7 +439,8 @@ function _M.collect()
     local vars = ngx.var or {}
     local hostname = vars.hostname or ""
 
-    if config.type == "etcd" then
+    -- we can't get etcd index in metric server if only stream subsystem is enabled
+    if config.type == "etcd" and not stream_only then
         -- etcd modify index
         etcd_modify_index()
 
@@ -322,8 +468,60 @@ function _M.collect()
 
     metrics.node_info:set(1, gen_arr(hostname))
 
+    -- update upstream_status metrics
+    local stats = control.get_health_checkers()
+    for _, stat in ipairs(stats) do
+        for _, node in ipairs(stat.nodes) do
+            metrics.upstream_status:set((node.status == "healthy") and 1 or 0,
+                gen_arr(stat.name, node.ip, node.port))
+        end
+    end
+
     core.response.set_header("content_type", "text/plain")
     return 200, core.table.concat(prometheus:metric_data())
+end
+_M.collect = collect
+
+
+local function get_api(called_by_api_router)
+    local export_uri = default_export_uri
+    local attr = plugin.plugin_attr(plugin_name)
+    if attr and attr.export_uri then
+        export_uri = attr.export_uri
+    end
+
+    local api = {
+        methods = {"GET"},
+        uri = export_uri,
+        handler = collect
+    }
+
+    if not called_by_api_router then
+        return api
+    end
+
+    if attr.enable_export_server then
+        return {}
+    end
+
+    return {api}
+end
+_M.get_api = get_api
+
+
+function _M.export_metrics(stream_only)
+    local api = get_api(false)
+    local uri = ngx.var.uri
+    local method = ngx.req.get_method()
+
+    if uri == api.uri and method == api.methods[1] then
+        local code, body = api.handler(nil, stream_only)
+        if code or body then
+            core.response.exit(code, body)
+        end
+    end
+
+    return core.response.exit(404)
 end
 
 

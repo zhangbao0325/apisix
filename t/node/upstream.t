@@ -48,8 +48,6 @@ __DATA__
 --- request
 GET /t
 --- error_code: 400
---- no_error_log
-[error]
 
 
 
@@ -79,8 +77,6 @@ GET /t
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -107,8 +103,6 @@ passed
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -118,8 +112,6 @@ GET /not_found
 --- error_code: 404
 --- response_body
 {"error_msg":"404 Route Not Found"}
---- no_error_log
-[error]
 
 
 
@@ -128,8 +120,6 @@ GET /not_found
 GET /hello
 --- response_body
 hello world
---- no_error_log
-[error]
 
 
 
@@ -140,11 +130,7 @@ hello world
             ngx.sleep(0.5)
             local t = require("lib.test_admin").test
             local code, message = t('/apisix/admin/upstreams/1',
-                 ngx.HTTP_DELETE,
-                 nil,
-                 [[{
-                    "action": "delete"
-                }]]
+                 ngx.HTTP_DELETE
             )
             ngx.print("[delete] code: ", code, " message: ", message)
         }
@@ -153,8 +139,6 @@ hello world
 GET /t
 --- response_body
 [delete] code: 400 message: {"error_msg":"can not delete this upstream, route [1] is still using it now"}
---- no_error_log
-[error]
 
 
 
@@ -164,11 +148,7 @@ GET /t
         content_by_lua_block {
             local t = require("lib.test_admin").test
             local code, message = t('/apisix/admin/routes/1',
-                 ngx.HTTP_DELETE,
-                 nil,
-                 [[{
-                    "action": "delete"
-                }]]
+                 ngx.HTTP_DELETE
             )
             ngx.say("[delete] code: ", code, " message: ", message)
         }
@@ -177,8 +157,6 @@ GET /t
 GET /t
 --- response_body
 [delete] code: 200 message: passed
---- no_error_log
-[error]
 
 
 
@@ -188,11 +166,7 @@ GET /t
         content_by_lua_block {
             local t = require("lib.test_admin").test
             local code, message = t('/apisix/admin/upstreams/1',
-                 ngx.HTTP_DELETE,
-                 nil,
-                 [[{
-                    "action": "delete"
-                }]]
+                 ngx.HTTP_DELETE
             )
             ngx.say("[delete] code: ", code, " message: ", message)
         }
@@ -201,8 +175,6 @@ GET /t
 GET /t
 --- response_body
 [delete] code: 200 message: passed
---- no_error_log
-[error]
 
 
 
@@ -212,11 +184,7 @@ GET /t
         content_by_lua_block {
             local t = require("lib.test_admin").test
             local code, message = t('/apisix/admin/upstreams/1',
-                 ngx.HTTP_DELETE,
-                 nil,
-                 [[{
-                    "action": "delete"
-                }]]
+                 ngx.HTTP_DELETE
             )
             ngx.say("[delete] code: ", code)
         }
@@ -225,8 +193,6 @@ GET /t
 GET /t
 --- response_body
 [delete] code: 404
---- no_error_log
-[error]
 
 
 
@@ -239,7 +205,7 @@ GET /t
                 ngx.HTTP_PUT,
                 [[{
                     "nodes": {
-                        "httpbin.org:80": 1
+                        "test.com:1980": 1
                     },
                     "type": "roundrobin",
                     "desc": "new upstream",
@@ -257,8 +223,6 @@ GET /t
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -270,7 +234,7 @@ passed
             local code, body = t('/apisix/admin/routes/1',
                 ngx.HTTP_PUT,
                 [[{
-                    "uri": "/get",
+                    "uri": "/echo",
                     "upstream_id": "1"
                 }]]
                 )
@@ -285,18 +249,14 @@ passed
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
 === TEST 12: hit route
 --- request
-GET /get
---- response_body eval
-qr/"Host": "httpbin.org"/
---- no_error_log
-[error]
+GET /echo
+--- response_headers
+host: test.com:1980
 
 
 
@@ -314,7 +274,7 @@ qr/"Host": "httpbin.org"/
                     "type": "roundrobin",
                     "desc": "new upstream",
                     "pass_host": "rewrite",
-                    "upstream_host": "httpbin.org"
+                    "upstream_host": "test.com"
                 }]]
                 )
 
@@ -328,8 +288,6 @@ qr/"Host": "httpbin.org"/
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -341,7 +299,7 @@ passed
             local code, body = t('/apisix/admin/routes/1',
                 ngx.HTTP_PUT,
                 [[{
-                    "uri": "/uri",
+                    "uri": "/echo",
                     "upstream_id": "1"
                 }]]
                 )
@@ -356,18 +314,14 @@ passed
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
 === TEST 15: hit route
 --- request
-GET /uri
---- response_body eval
-qr/host: httpbin.org/
---- no_error_log
-[error]
+GET /echo
+--- response_headers
+host: test.com
 
 
 
@@ -392,8 +346,6 @@ GET /t
 --- error_code: 400
 --- response_body
 {"error_msg":"can not delete this upstream, route [1] is still using it now"}
---- no_error_log
-[error]
 
 
 
@@ -436,18 +388,14 @@ GET /t
     }
 --- request
 GET /t
---- skip_nginx: 5: < 1.19.0
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
 === TEST 18: hit route
 --- request
 GET /uri
---- skip_nginx: 5: < 1.19.0
 --- response_body eval
 qr/host: 127.0.0.1/
 --- error_log
@@ -494,19 +442,189 @@ proxy request to 127.0.0.1:1980
     }
 --- request
 GET /t
---- skip_nginx: 5: < 1.19.0
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
 === TEST 20: hit route
 --- request
 GET /uri
---- skip_nginx: 5: < 1.19.0
 --- response_body eval
 qr/host: localhost/
 --- error_log
 proxy request to 127.0.0.1:1980
+
+
+
+=== TEST 21: check that including port in host header is supported when pass_host = node and port is not standard
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin").test
+            local code, body = t('/apisix/admin/upstreams/1',
+                 ngx.HTTP_PUT,
+                 [[{
+                    "nodes": {
+                        "localhost:1980": 1000
+                    },
+                    "type": "roundrobin",
+                    "pass_host": "node"
+                }]]
+                )
+
+            if code >= 300 then
+                ngx.status = code
+                ngx.say(body)
+                return
+            end
+
+            local code, body = t('/apisix/admin/routes/1',
+                 ngx.HTTP_PUT,
+                 [[{
+                        "methods": ["GET"],
+                        "upstream_id": "1",
+                        "uri": "/uri"
+                }]]
+                )
+
+            if code >= 300 then
+                ngx.status = code
+            end
+            ngx.say(body)
+        }
+    }
+--- request
+GET /t
+--- response_body
+passed
+
+
+
+=== TEST 22: hit route
+--- request
+GET /uri
+--- response_body eval
+qr/host: localhost:1980/
+
+
+
+=== TEST 23: check that including port in host header is supported when retrying and pass_host = node and port is not standard
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin").test
+            local code, body = t('/apisix/admin/upstreams/1',
+                 ngx.HTTP_PUT,
+                 [[{
+                    "nodes": {
+                        "127.0.0.1:1979": 1000,
+                        "localhost:1980": 1
+                    },
+                    "type": "roundrobin",
+                    "pass_host": "node"
+                }]]
+                )
+
+            if code >= 300 then
+                ngx.status = code
+                ngx.say(body)
+                return
+            end
+
+            local code, body = t('/apisix/admin/routes/1',
+                 ngx.HTTP_PUT,
+                 [[{
+                        "methods": ["GET"],
+                        "upstream_id": "1",
+                        "uri": "/uri"
+                }]]
+                )
+
+            if code >= 300 then
+                ngx.status = code
+            end
+            ngx.say(body)
+        }
+    }
+--- request
+GET /t
+--- response_body
+passed
+
+
+
+=== TEST 24: hit route
+--- log_level: debug
+--- request
+GET /uri
+--- error_log
+Host: 127.0.0.1:1979
+
+
+
+=== TEST 25: distinguish different upstreams even they have the same addr
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin").test
+            local code, body = t('/apisix/admin/upstreams/1',
+                 ngx.HTTP_PUT,
+                 {
+                    nodes = {["localhost:1980"] = 1},
+                    type = "roundrobin"
+                 }
+                )
+            assert(code < 300)
+
+            local code, body = t('/apisix/admin/routes/1',
+                 ngx.HTTP_PUT,
+                 [[{
+                        "upstream_id": "1",
+                        "uri": "/server_port"
+                }]]
+                )
+            assert(code < 300)
+
+            local http = require "resty.http"
+            local uri = "http://127.0.0.1:" .. ngx.var.server_port
+                        .. "/server_port"
+
+            local ports_count = {}
+            for i = 1, 24 do
+                local httpc = http.new()
+                local res, err = httpc:request_uri(uri)
+                if not res then
+                    ngx.say(err)
+                    return
+                end
+                ports_count[res.body] = (ports_count[res.body] or 0) + 1
+
+                local code, body = t('/apisix/admin/upstreams/1',
+                    ngx.HTTP_PUT,
+                    {
+                        nodes = {["localhost:" .. (1980 + i % 3)] = 1},
+                        type = "roundrobin"
+                    }
+                    )
+                assert(code < 300)
+            end
+
+            local ports_arr = {}
+            for port, count in pairs(ports_count) do
+                table.insert(ports_arr, {port = port, count = count})
+            end
+
+            local function cmd(a, b)
+                return a.port > b.port
+            end
+            table.sort(ports_arr, cmd)
+
+            ngx.say(require("toolkit.json").encode(ports_arr))
+        }
+    }
+--- request
+GET /t
+--- timeout: 5
+--- response_body
+[{"count":8,"port":"1982"},{"count":8,"port":"1981"},{"count":8,"port":"1980"}]

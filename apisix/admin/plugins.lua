@@ -17,24 +17,26 @@
 local require   = require
 local core = require("apisix.core")
 local check_schema = require("apisix.plugin").check_schema
-local stream_check_schema = require("apisix.plugin").stream_check_schema
 local ipairs    = ipairs
 local pcall     = pcall
 local table_sort = table.sort
 local table_insert = table.insert
 local get_uri_args = ngx.req.get_uri_args
 local plugin_get_all = require("apisix.plugin").get_all
+local encrypt_conf = require("apisix.plugin").encrypt_conf
+local pairs = pairs
 
 local _M = {}
 
 
 function _M.check_schema(plugins_conf, schema_type)
-    return check_schema(plugins_conf, schema_type, false)
-end
-
-
-function _M.stream_check_schema(plugins_conf, schema_type)
-    return stream_check_schema(plugins_conf, schema_type, false)
+    local ok, err = check_schema(plugins_conf, schema_type, false)
+    if ok then
+        for name, conf in pairs(plugins_conf) do
+            encrypt_conf(name, conf, schema_type)
+        end
+    end
+    return ok, err
 end
 
 

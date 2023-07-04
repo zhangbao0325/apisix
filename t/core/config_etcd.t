@@ -29,10 +29,15 @@ __DATA__
 --- yaml_config
 apisix:
   node_listen: 1984
-etcd:
-  host:
-    - "http://127.0.0.1:7777"  -- wrong etcd port
-  timeout: 1
+deployment:
+  role: traditional
+  role_traditional:
+    config_provider: etcd
+  etcd:
+    prefix: "/apisix"
+    host:
+      - "http://127.0.0.1:7777"  -- wrong etcd port
+    timeout: 1
 --- config
     location /t {
         content_by_lua_block {
@@ -54,9 +59,15 @@ qr/(connection refused){1,}/
 --- yaml_config
 apisix:
   node_listen: 1984
-etcd:
-  host:
-    - "https://127.0.0.1:2379"
+  ssl:
+    ssl_trusted_certificate: t/servroot/conf/cert/etcd.pem
+deployment:
+  role: traditional
+  role_traditional:
+    config_provider: etcd
+  etcd:
+    host:
+      - "https://127.0.0.1:2379"
 --- extra_init_by_lua
 local health_check = require("resty.etcd.health_check")
 health_check.get_target_status = function()
@@ -73,9 +84,9 @@ end
 --- request
 GET /t
 --- grep_error_log chop
-handshake failed
+peer closed connection in SSL handshake while SSL handshaking to upstream
 --- grep_error_log_out eval
-qr/(handshake failed){1,}/
+qr/(peer closed connection in SSL handshake while SSL handshaking to upstream){1,}/
 
 
 
@@ -83,9 +94,13 @@ qr/(handshake failed){1,}/
 --- yaml_config
 apisix:
   node_listen: 1984
-etcd:
-  host:
-    - "http://127.0.0.1:12379"
+deployment:
+  role: traditional
+  role_traditional:
+    config_provider: etcd
+  etcd:
+    host:
+      - "http://127.0.0.1:12379"
 --- config
     location /t {
         content_by_lua_block {
@@ -107,9 +122,15 @@ qr/(closed){1,}/
 --- yaml_config
 apisix:
   node_listen: 1984
-etcd:
-  host:
-    - "https://127.0.0.1:12379"
+  ssl:
+    ssl_trusted_certificate: t/servroot/conf/cert/etcd.pem
+deployment:
+  role: traditional
+  role_traditional:
+    config_provider: etcd
+  etcd:
+    host:
+      - "https://127.0.0.1:12379"
 --- extra_init_by_lua
 local health_check = require("resty.etcd.health_check")
 health_check.get_target_status = function()
@@ -126,9 +147,9 @@ end
 --- request
 GET /t
 --- grep_error_log chop
-18: self signed certificate
+10:certificate has expired
 --- grep_error_log_out eval
-qr/(18: self signed certificate){1,}/
+qr/(10:certificate has expired){1,}/
 
 
 
@@ -136,12 +157,17 @@ qr/(18: self signed certificate){1,}/
 --- yaml_config
 apisix:
   node_listen: 1984
-  admin_key: null
-etcd:
-  host:
-    - "https://127.0.0.1:12379"
-  tls:
-    verify: false
+deployment:
+  role: traditional
+  role_traditional:
+    config_provider: etcd
+  admin:
+    admin_key: null
+  etcd:
+    host:
+      - "https://127.0.0.1:12379"
+    tls:
+      verify: false
 --- config
     location /t {
         content_by_lua_block {
@@ -158,29 +184,9 @@ etcd:
                     },
                     "desc": "new route",
                     "uri": "/index.html"
-                }]],
-                [[{
-                    "node": {
-                        "value": {
-                            "methods": [
-                                "GET"
-                            ],
-                            "uri": "/index.html",
-                            "desc": "new route",
-                            "upstream": {
-                                "nodes": {
-                                    "127.0.0.1:8080": 1
-                                },
-                                "type": "roundrobin"
-                            }
-                        },
-                        "key": "/apisix/routes/1"
-                    },
-                    "action": "set"
                 }]]
-                )
+            )
 
-            ngx.status = code
             ngx.say(body)
         }
     }
@@ -188,8 +194,6 @@ etcd:
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -198,37 +202,24 @@ passed
 apisix:
   node_listen: 1984
   admin_key: null
-etcd:
-  host:
-    - "https://127.0.0.1:12379"
-  tls:
-    verify: false
+deployment:
+  role: traditional
+  role_traditional:
+    config_provider: etcd
+  admin:
+    admin_key: ~
+  etcd:
+    host:
+      - "https://127.0.0.1:12379"
+    tls:
+      verify: false
 --- config
     location /t {
         content_by_lua_block {
             local t = require("lib.test_admin").test
             local code, body = t('/apisix/admin/routes/1',
                  ngx.HTTP_GET,
-                 nil,
-                [[{
-                    "node": {
-                        "value": {
-                            "methods": [
-                                "GET"
-                            ],
-                            "uri": "/index.html",
-                            "desc": "new route",
-                            "upstream": {
-                                "nodes": {
-                                    "127.0.0.1:8080": 1
-                                },
-                                "type": "roundrobin"
-                            }
-                        },
-                        "key": "/apisix/routes/1"
-                    },
-                    "action": "get"
-                }]]
+                 nil
                 )
 
             ngx.status = code
@@ -239,8 +230,6 @@ etcd:
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -248,12 +237,16 @@ passed
 --- yaml_config
 apisix:
   node_listen: 1984
-etcd:
-  host:
-    - "http://127.0.0.1:1980" -- fake server port
-  timeout: 1
-  user: root                    # root username for etcd
-  password: 5tHkHhYkjr6cQY      # root password for etcd
+deployment:
+  role: traditional
+  role_traditional:
+    config_provider: etcd
+  etcd:
+    host:
+      - "http://127.0.0.1:1980" -- fake server port
+    timeout: 1
+    user: root                    # root username for etcd
+    password: 5tHkHhYkjr6cQY      # root password for etcd
 --- extra_init_by_lua
 local health_check = require("resty.etcd.health_check")
 health_check.get_target_status = function()
@@ -273,7 +266,6 @@ qr/etcd auth failed/
 etcd auth failed
 etcd auth failed
 etcd auth failed
-etcd auth failed
 
 
 
@@ -286,7 +278,7 @@ etcd auth failed
             local config = core.config.new()
             local res = config:getkey("/routes/")
             if res and res.status == 200 and res.body
-               and res.body.node and res.body.node.key == "/apisix/routes" then
+               and res.body.count and tonumber(res.body.count) >= 1 then
                 ngx.say("passed")
               else
                 ngx.say("failed")
@@ -305,8 +297,6 @@ GET /t
 --- response_body
 passed
 passed
---- no_error_log
-[error]
 
 
 
@@ -326,3 +316,130 @@ qr/healthy check use \S+ \w+/
 --- grep_error_log_out eval
 qr/healthy check use round robin
 (healthy check use ngx.shared dict){1,}/
+
+
+
+=== TEST 10: last_err can be nil when the reconnection is successful
+--- config
+    location /t {
+        content_by_lua_block {
+            local config_etcd = require("apisix.core.config_etcd")
+            local count = 0
+            config_etcd.inject_sync_data(function()
+                if count % 2 == 0 then
+                    count = count + 1
+                    return nil, "has no healthy etcd endpoint available"
+                else
+                    return true
+                end
+            end)
+            config_etcd.test_automatic_fetch(false, {
+                running = true,
+                resync_delay = 1,
+            })
+            ngx.say("passed")
+        }
+    }
+--- request
+GET /t
+--- error_log
+reconnected to etcd
+--- response_body
+passed
+
+
+
+=== TEST 11: reloaded data may be in res.body.node (special kvs structure)
+--- yaml_config
+deployment:
+    role: traditional
+    role_traditional:
+        config_provider: etcd
+    admin:
+        admin_key: null
+--- config
+    location /t {
+        content_by_lua_block {
+            local config_etcd = require("apisix.core.config_etcd")
+            local etcd_cli = {}
+            function etcd_cli.readdir()
+                return {
+                    status = 200,
+                    headers = {},
+                    body = {
+                        header = {revision = 1},
+                        kvs = {{key = "foo", value = "bar"}},
+                    }
+                }
+            end
+            config_etcd.test_sync_data({
+                etcd_cli = etcd_cli,
+                key = "fake",
+                single_item = true,
+                -- need_reload because something wrong happened before
+                need_reload = true,
+                upgrade_version = function() end,
+                conf_version = 1,
+            })
+        }
+    }
+--- request
+GET /t
+--- log_level: debug
+--- grep_error_log eval
+qr/readdir key: fake res: .+/
+--- grep_error_log_out eval
+qr/readdir key: fake res: \{("value":"bar","key":"foo"|"key":"foo","value":"bar")\}/
+--- wait: 1
+--- no_error_log
+[error]
+
+
+
+=== TEST 12: reloaded data may be in res.body.node (admin_api_version is v2)
+--- yaml_config
+deployment:
+    role: traditional
+    role_traditional:
+        config_provider: etcd
+    admin:
+        admin_key: null
+        admin_api_version: v2
+--- config
+    location /t {
+        content_by_lua_block {
+            local config_etcd = require("apisix.core.config_etcd")
+            local etcd_cli = {}
+            function etcd_cli.readdir()
+                return {
+                    status = 200,
+                    headers = {},
+                    body = {
+                        header = {revision = 1},
+                        kvs = {
+                            {key = "/foo"},
+                            {key = "/foo/bar", value = {"bar"}}
+                        },
+                    }
+                }
+            end
+            config_etcd.test_sync_data({
+                etcd_cli = etcd_cli,
+                key = "fake",
+                -- need_reload because something wrong happened before
+                need_reload = true,
+                upgrade_version = function() end,
+                conf_version = 1,
+            })
+        }
+    }
+--- request
+GET /t
+--- log_level: debug
+--- grep_error_log eval
+qr/readdir key: fake res: .+/
+--- grep_error_log_out eval
+qr/readdir key: fake res: \{.*"nodes":\[\{.*"value":\["bar"\].*\}\].*\}/
+--- wait: 1
+--- no_error_log
+[error]

@@ -20,6 +20,7 @@ repeat_each(1);
 #no_long_string();
 no_root_location();
 log_level('info');
+worker_connections(256);
 run_tests;
 
 __DATA__
@@ -40,22 +41,6 @@ __DATA__
                             "type": "ewma"
                         },
                         "uri": "/ewma"
-                }]],
-                [[{
-                    "node": {
-                        "value": {
-                            "upstream": {
-                                "nodes": {
-                                    "127.0.0.1:1980": 100,
-                                    "127.0.0.1:1981": 100
-                                },
-                                "type": "ewma"
-                            },
-                            "uri": "/ewma"
-                        },
-                        "key": "/apisix/routes/1"
-                    },
-                    "action": "set"
                 }]]
                 )
 
@@ -69,8 +54,6 @@ __DATA__
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -117,8 +100,6 @@ GET /t
 --- response_body
 [{"count":1,"port":"1981"},{"count":11,"port":"1980"}]
 --- error_code: 200
---- no_error_log
-[error]
 
 
 
@@ -213,8 +194,6 @@ GET /t
 --- response_body
 {"count":1,"port":"1981"}
 --- error_code: 200
---- no_error_log
-[error]
 
 
 

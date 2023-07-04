@@ -19,11 +19,12 @@ local core = require("apisix.core")
 local discovery = require("apisix.discovery.init").discovery
 local upstream_util = require("apisix.utils.upstream")
 local apisix_ssl = require("apisix.ssl")
-local balancer = require("ngx.balancer")
 local error = error
 local tostring = tostring
 local ipairs = ipairs
 local pairs = pairs
+local pcall = pcall
+local ngx_var = ngx.var
 local is_http = ngx.config.subsystem == "http"
 local upstreams
 local healthcheck
@@ -35,9 +36,22 @@ if ok then
     set_upstream_tls_client_param = apisix_ngx_upstream.set_cert_and_key
 else
     set_upstream_tls_client_param = function ()
-        return nil, "need to build APISIX-OpenResty to support upstream mTLS"
+        return nil, "need to build APISIX-Base to support upstream mTLS"
     end
 end
+
+local set_stream_upstream_tls
+if not is_http then
+    local ok, apisix_ngx_stream_upstream = pcall(require, "resty.apisix.stream.upstream")
+    if ok then
+        set_stream_upstream_tls = apisix_ngx_stream_upstream.set_tls
+    else
+        set_stream_upstream_tls = function ()
+            return nil, "need to build APISIX-Base to support TLS over TCP upstream"
+        end
+    end
+end
+
 
 
 local HTTP_CODE_UPSTREAM_UNAVAILABLE = 503
@@ -61,7 +75,6 @@ local function set_directly(ctx, key, ver, conf)
     ctx.upstream_conf = conf
     ctx.upstream_version = ver
     ctx.upstream_key = key
-    ctx.upstream_healthcheck_parent = conf.parent
     return
 end
 _M.set = set_directly
@@ -91,6 +104,12 @@ local function create_checker(upstream)
         return healthcheck_parent.checker
     end
 
+    if upstream.is_creating_checker then
+        core.log.info("another request is creating new checker")
+        return nil
+    end
+    upstream.is_creating_checker = true
+
     local checker, err = healthcheck.new({
         name = get_healthchecker_name(healthcheck_parent),
         shm_name = "upstream-healthcheck",
@@ -99,12 +118,16 @@ local function create_checker(upstream)
 
     if not checker then
         core.log.error("fail to create healthcheck instance: ", err)
+        upstream.is_creating_checker = nil
         return nil
     end
 
     if healthcheck_parent.checker then
-        core.config_util.cancel_clean_handler(healthcheck_parent,
+        local ok, err = pcall(core.config_util.cancel_clean_handler, healthcheck_parent,
                                               healthcheck_parent.checker_idx, true)
+        if not ok then
+            core.log.error("cancel clean handler error: ", err)
+        end
     end
 
     core.log.info("create new checker: ", tostring(checker))
@@ -112,7 +135,7 @@ local function create_checker(upstream)
     local host = upstream.checks and upstream.checks.active and upstream.checks.active.host
     local port = upstream.checks and upstream.checks.active and upstream.checks.active.port
     local up_hdr = upstream.pass_host == "rewrite" and upstream.upstream_host
-    local use_node_hdr = upstream.pass_host == "node"
+    local use_node_hdr = upstream.pass_host == "node" or nil
     for _, node in ipairs(upstream.nodes) do
         local host_hdr = up_hdr or (use_node_hdr and node.domain)
         local ok, err = checker:add_target(node.host, port or node.port, host,
@@ -127,6 +150,8 @@ local function create_checker(upstream)
     healthcheck_parent.checker_upstream = upstream
     healthcheck_parent.checker_idx =
         core.config_util.add_clean_handler(healthcheck_parent, release_checker)
+
+    upstream.is_creating_checker = nil
 
     return checker
 end
@@ -152,68 +177,69 @@ local function set_upstream_scheme(ctx, upstream)
 end
 
 
-local fill_node_info
-do
-    local scheme_to_port = {
-        http = 80,
-        https = 443,
-        grpc = 80,
-        grpcs = 443,
-    }
+local scheme_to_port = {
+    http = 80,
+    https = 443,
+    grpc = 80,
+    grpcs = 443,
+}
 
-    function fill_node_info(up_conf, scheme, is_stream)
-        local nodes = up_conf.nodes
-        if up_conf.nodes_ref == nodes then
-            -- filled
-            return true
-        end
 
-        local need_filled = false
-        for _, n in ipairs(nodes) do
-            if not is_stream and not n.port then
-                if up_conf.scheme ~= scheme then
-                    return nil, "Can't detect upstream's scheme. " ..
-                                "You should either specify a port in the node " ..
-                                "or specify the upstream.scheme explicitly"
-                end
+_M.scheme_to_port = scheme_to_port
 
-                need_filled = true
-            end
 
-            if not n.priority then
-                need_filled = true
-            end
-        end
-
-        up_conf.original_nodes = nodes
-
-        if not need_filled then
-            up_conf.nodes_ref = nodes
-            return true
-        end
-
-        local filled_nodes = core.table.new(#nodes, 0)
-        for i, n in ipairs(nodes) do
-            if not n.port or not n.priority then
-                filled_nodes[i] = core.table.clone(n)
-
-                if not is_stream and not n.port then
-                    filled_nodes[i].port = scheme_to_port[scheme]
-                end
-
-                -- fix priority for non-array nodes and nodes from service discovery
-                if not n.priority then
-                    filled_nodes[i].priority = 0
-                end
-            else
-                filled_nodes[i] = n
-            end
-        end
-
-        up_conf.nodes_ref = filled_nodes
-        up_conf.nodes = filled_nodes
+local function fill_node_info(up_conf, scheme, is_stream)
+    local nodes = up_conf.nodes
+    if up_conf.nodes_ref == nodes then
+        -- filled
         return true
     end
+
+    local need_filled = false
+    for _, n in ipairs(nodes) do
+        if not is_stream and not n.port then
+            if up_conf.scheme ~= scheme then
+                return nil, "Can't detect upstream's scheme. " ..
+                            "You should either specify a port in the node " ..
+                            "or specify the upstream.scheme explicitly"
+            end
+
+            need_filled = true
+        end
+
+        if not n.priority then
+            need_filled = true
+        end
+    end
+
+    up_conf.original_nodes = nodes
+
+    if not need_filled then
+        up_conf.nodes_ref = nodes
+        return true
+    end
+
+    local filled_nodes = core.table.new(#nodes, 0)
+    for i, n in ipairs(nodes) do
+        if not n.port or not n.priority then
+            filled_nodes[i] = core.table.clone(n)
+
+            if not is_stream and not n.port then
+                filled_nodes[i].port = scheme_to_port[scheme]
+            end
+
+            -- fix priority for non-array nodes and nodes from service discovery
+            if not n.priority then
+                filled_nodes[i].priority = 0
+            end
+        else
+            filled_nodes[i] = n
+        end
+    end
+
+    up_conf.nodes_ref = filled_nodes
+    up_conf.nodes = filled_nodes
+    return true
 end
 
 
@@ -272,8 +298,11 @@ function _M.set_by_route(route, api_ctx)
         end
     end
 
-    set_directly(api_ctx, up_conf.type .. "#upstream_" .. tostring(up_conf),
-                 tostring(up_conf), up_conf)
+    local id = up_conf.parent.value.id
+    local conf_version = up_conf.parent.modifiedIndex
+    -- include the upstream object as part of the version, because the upstream will be changed
+    -- by service discovery or dns resolver.
+    set_directly(api_ctx, id, conf_version .. "#" .. tostring(up_conf), up_conf)
 
     local nodes_count = up_conf.nodes and #up_conf.nodes or 0
     if nodes_count == 0 then
@@ -284,6 +313,19 @@ function _M.set_by_route(route, api_ctx)
         local ok, err = fill_node_info(up_conf, nil, true)
         if not ok then
             return 503, err
+        end
+
+        local scheme = up_conf.scheme
+        if scheme == "tls" then
+            local ok, err = set_stream_upstream_tls()
+            if not ok then
+                return 503, err
+            end
+
+            local sni = apisix_ssl.server_name()
+            if sni then
+                ngx_var.upstream_sni = sni
+            end
         end
 
         return
@@ -303,14 +345,24 @@ function _M.set_by_route(route, api_ctx)
 
     local scheme = up_conf.scheme
     if (scheme == "https" or scheme == "grpcs") and up_conf.tls then
+
+        local client_cert, client_key
+        if up_conf.tls.client_cert_id then
+            client_cert = api_ctx.upstream_ssl.cert
+            client_key = api_ctx.upstream_ssl.key
+        else
+            client_cert = up_conf.tls.client_cert
+            client_key = up_conf.tls.client_key
+        end
+
         -- the sni here is just for logging
         local sni = api_ctx.var.upstream_host
-        local cert, err = apisix_ssl.fetch_cert(sni, up_conf.tls.client_cert)
+        local cert, err = apisix_ssl.fetch_cert(sni, client_cert)
         if not ok then
             return 503, err
         end
 
-        local key, err = apisix_ssl.fetch_pkey(sni, up_conf.tls.client_key)
+        local key, err = apisix_ssl.fetch_pkey(sni, client_key)
         if not ok then
             return 503, err
         end
@@ -388,25 +440,44 @@ local function check_upstream_conf(in_dp, conf)
             return false, "invalid configuration: " .. err
         end
 
+        local ssl_id = conf.tls and conf.tls.client_cert_id
+        if ssl_id then
+            local key = "/ssls/" .. ssl_id
+            local res, err = core.etcd.get(key)
+            if not res then
+                return nil, "failed to fetch ssl info by "
+                                    .. "ssl id [" .. ssl_id .. "]: " .. err
+            end
+
+            if res.status ~= 200 then
+                return nil, "failed to fetch ssl info by "
+                                    .. "ssl id [" .. ssl_id .. "], "
+                                    .. "response code: " .. res.status
+            end
+            if res.body and res.body.node and
+                res.body.node.value and res.body.node.value.type ~= "client" then
+
+                return nil, "failed to fetch ssl info by "
+                                    .. "ssl id [" .. ssl_id .. "], "
+                                    .. "wrong ssl type"
+            end
+        end
+
         -- encrypt the key in the admin
         if conf.tls and conf.tls.client_key then
             conf.tls.client_key = apisix_ssl.aes_encrypt_pkey(conf.tls.client_key)
         end
     end
 
-    if conf.pass_host == "node" and conf.nodes and
-        not balancer.recreate_request and core.table.nkeys(conf.nodes) ~= 1
-    then
-        return false, "only support single node for `node` mode currently"
+    if is_http then
+        if conf.pass_host == "rewrite" and
+            (conf.upstream_host == nil or conf.upstream_host == "")
+        then
+            return false, "`upstream_host` can't be empty when `pass_host` is `rewrite`"
+        end
     end
 
-    if conf.pass_host == "rewrite" and
-        (conf.upstream_host == nil or conf.upstream_host == "")
-    then
-        return false, "`upstream_host` can't be empty when `pass_host` is `rewrite`"
-    end
-
-    if conf.tls then
+    if conf.tls and conf.tls.client_cert then
         local cert = conf.tls.client_cert
         local key = conf.tls.client_key
         local ok, err = apisix_ssl.validate(cert, key)
@@ -450,6 +521,11 @@ local function filter_upstream(value, parent)
     end
 
     value.parent = parent
+
+    if not is_http and value.scheme == "http" then
+        -- For L4 proxy, the default scheme is "tcp"
+        value.scheme = "tcp"
+    end
 
     if not value.nodes then
         return
@@ -507,6 +583,32 @@ function _M.init_worker()
         error("failed to create etcd instance for fetching upstream: " .. err)
         return
     end
+end
+
+
+function _M.get_by_id(up_id)
+    local upstream
+    local upstreams = core.config.fetch_created_obj("/upstreams")
+    if upstreams then
+        upstream = upstreams:get(tostring(up_id))
+    end
+
+    if not upstream then
+        core.log.error("failed to find upstream by id: ", up_id)
+        return nil
+    end
+
+    if upstream.has_domain then
+        local err
+        upstream, err = upstream_util.parse_domain_in_up(upstream)
+        if err then
+            core.log.error("failed to get resolved upstream: ", err)
+            return nil
+        end
+    end
+
+    core.log.info("parsed upstream: ", core.json.delay_encode(upstream, true))
+    return upstream.dns_value or upstream.value
 end
 
 

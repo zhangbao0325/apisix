@@ -14,6 +14,11 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 --
+
+--- Get the information form upstream response, or set the information to client response.
+--
+-- @module core.response
+
 local encode_json = require("cjson.safe").encode
 local ngx = ngx
 local arg = ngx.arg
@@ -131,7 +136,12 @@ function _M.set_header(...)
     set_header(false, ...)
 end
 
-
+---
+-- Add a header to the client response.
+--
+-- @function core.response.add_header
+-- @usage
+-- core.response.add_header("Apisix-Plugins", "no plugin")
 function _M.add_header(...)
     set_header(true, ...)
 end
@@ -167,30 +177,35 @@ end
 function _M.hold_body_chunk(ctx, hold_the_copy)
     local body_buffer
     local chunk, eof = arg[1], arg[2]
-    if eof then
-        body_buffer = ctx._body_buffer
-        if not body_buffer then
-            return chunk
-        end
 
-        body_buffer = concat_tab(body_buffer, "", 1, body_buffer.n)
-        ctx._body_buffer = nil
-        return body_buffer
+    if not ctx._body_buffer then
+        ctx._body_buffer = {}
     end
 
     if type(chunk) == "string" and chunk ~= "" then
-        body_buffer = ctx._body_buffer
+        body_buffer = ctx._body_buffer[ctx._plugin_name]
         if not body_buffer then
             body_buffer = {
                 chunk,
                 n = 1
             }
-            ctx._body_buffer = body_buffer
+            ctx._body_buffer[ctx._plugin_name] = body_buffer
         else
             local n = body_buffer.n + 1
             body_buffer.n = n
             body_buffer[n] = chunk
         end
+    end
+
+    if eof then
+        body_buffer = ctx._body_buffer[ctx._plugin_name]
+        if not body_buffer then
+            return chunk
+        end
+
+        body_buffer = concat_tab(body_buffer, "", 1, body_buffer.n)
+        ctx._body_buffer[ctx._plugin_name] = nil
+        return body_buffer
     end
 
     if not hold_the_copy then

@@ -37,7 +37,7 @@ local id_schema = {
     }
 }
 
-local host_def_pat = "^\\*?[0-9a-zA-Z-._]+$"
+local host_def_pat = "^\\*?[0-9a-zA-Z-._\\[\\]:]+$"
 local host_def = {
     type = "string",
     pattern = host_def_pat,
@@ -82,7 +82,7 @@ local label_value_def = {
     description = "value of label",
     type = "string",
     pattern = [[^\S+$]],
-    maxLength = 64,
+    maxLength = 256,
     minLength = 1
 }
 _M.label_value_def = label_value_def
@@ -94,7 +94,6 @@ local labels_def = {
     patternProperties = {
         [".*"] = label_value_def
     },
-    maxProperties = 16
 }
 
 
@@ -278,20 +277,6 @@ local health_checker = {
                     }
                 }
             },
-            default = {
-                type = "http",
-                healthy = {
-                    http_statuses = { 200, 201, 202, 203, 204, 205, 206, 207, 208, 226,
-                                      300, 301, 302, 303, 304, 305, 306, 307, 308 },
-                    successes = 0,
-                },
-                unhealthy = {
-                    http_statuses = { 429, 500, 503 },
-                    tcp_failures = 0,
-                    timeouts = 0,
-                    http_failures = 0,
-                },
-            }
         }
     },
     anyOf = {
@@ -405,10 +390,29 @@ local upstream_schema = {
         tls = {
             type = "object",
             properties = {
+                client_cert_id = id_schema,
                 client_cert = certificate_scheme,
                 client_key = private_key_schema,
+                verify = {
+                    type = "boolean",
+                    description = "Turn on server certificate verification, "..
+                        "currently only kafka upstream is supported",
+                    default = false,
+                },
             },
-            required = {"client_cert", "client_key"},
+            dependencies = {
+                client_cert = {
+                    required = {"client_key"},
+                    ["not"] = {required = {"client_cert_id"}}
+                },
+                client_key = {
+                    required = {"client_cert"},
+                    ["not"] = {required = {"client_cert_id"}}
+                },
+                client_cert_id = {
+                    ["not"] = {required = {"client_client", "client_key"}}
+                }
+            }
         },
         keepalive_pool = {
             type = "object",
@@ -433,6 +437,7 @@ local upstream_schema = {
         type = {
             description = "algorithms of load balancing",
             type = "string",
+            default = "roundrobin",
         },
         checks = health_checker,
         hash_on = {
@@ -452,7 +457,12 @@ local upstream_schema = {
         },
         scheme = {
             default = "http",
-            enum = {"grpc", "grpcs", "http", "https"}
+            enum = {"grpc", "grpcs", "http", "https", "tcp", "tls", "udp",
+                "kafka"},
+            description = "The scheme of the upstream." ..
+                " For L7 proxy, it can be one of grpc/grpcs/http/https." ..
+                " For L4 proxy, it can be one of tcp/tls/udp." ..
+                " For specific protocols, it can be kafka."
         },
         labels = labels_def,
         discovery_type = {
@@ -489,16 +499,16 @@ local upstream_schema = {
         id = id_schema,
     },
     oneOf = {
-        {required = {"type", "nodes"}},
-        {required = {"type", "service_name", "discovery_type"}},
-    },
+        {required = {"nodes"}},
+        {required = {"service_name", "discovery_type"}},
+    }
 }
 
 -- TODO: add more nginx variable support
 _M.upstream_hash_vars_schema = {
     type = "string",
     pattern = [[^((uri|server_name|server_addr|request_uri|remote_port]]
-               .. [[|remote_addr|query_string|host|hostname)]]
+               .. [[|remote_addr|query_string|host|hostname|mqtt_client_id)]]
                .. [[|arg_[0-9a-zA-z_-]+)$]],
 }
 
@@ -521,7 +531,7 @@ local method_schema = {
     description = "HTTP method",
     type = "string",
     enum = {"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD",
-        "OPTIONS", "CONNECT", "TRACE"},
+        "OPTIONS", "CONNECT", "TRACE", "PURGE"},
 }
 _M.method_schema = method_schema
 
@@ -587,9 +597,6 @@ _M.route = {
 
         service_id = id_schema,
         upstream_id = id_schema,
-        service_protocol = {
-            enum = {"grpc", "http"}
-        },
 
         enable_websocket = {
             description = "enable websocket for request",
@@ -692,6 +699,7 @@ _M.consumer = {
             type = "string", minLength = 1, maxLength = rule_name_def.maxLength,
             pattern = [[^[a-zA-Z0-9_]+$]]
         },
+        group_id = id_schema,
         plugins = plugins_schema,
         labels = labels_def,
         create_time = timestamp_def,
@@ -709,8 +717,27 @@ _M.ssl = {
     type = "object",
     properties = {
         id = id_schema,
-        cert = certificate_scheme,
-        key = private_key_schema,
+        type = {
+            description = "ssl certificate type, " ..
+                            "server to server certificate, " ..
+                            "client to client certificate for upstream",
+            type = "string",
+            default = "server",
+            enum = {"server", "client"}
+        },
+        cert = {
+            oneOf = {
+                certificate_scheme,
+                -- TODO: uniformly define the schema of secret_uri
+                { type = "string", pattern = "^\\$(secret|env)://"}
+            }
+        },
+        key = {
+            oneOf = {
+                private_key_schema,
+                { type = "string", pattern = "^\\$(secret|env)://"}
+            }
+        },
         sni = {
             type = "string",
             pattern = host_def_pat,
@@ -740,6 +767,15 @@ _M.ssl = {
                     minimum = 0,
                     default = 1,
                 },
+                skip_mtls_uri_regex = {
+                    type = "array",
+                    minItems = 1,
+                    uniqueItems = true,
+                    items = {
+                        description = "uri regular expression to skip mtls",
+                        type = "string",
+                    }
+                },
             },
             required = {"ca"},
         },
@@ -759,10 +795,20 @@ _M.ssl = {
         create_time = timestamp_def,
         update_time = timestamp_def
     },
-    oneOf = {
-        {required = {"sni", "key", "cert"}},
-        {required = {"snis", "key", "cert"}}
+    ["if"] = {
+        properties = {
+            type = {
+                enum = {"server"},
+            },
+        },
     },
+    ["then"] = {
+        oneOf = {
+            {required = {"sni", "key", "cert"}},
+            {required = {"snis", "key", "cert"}}
+        }
+    },
+    ["else"] = {required = {"key", "cert"}}
 }
 
 
@@ -790,7 +836,45 @@ _M.global_rule = {
         create_time = timestamp_def,
         update_time = timestamp_def
     },
-    required = {"plugins"},
+    required = {"id", "plugins"},
+}
+
+
+local xrpc_protocol_schema = {
+    type = "object",
+    properties = {
+        name = {
+            type = "string",
+        },
+        superior_id = id_schema,
+        conf = {
+            description = "protocol-specific configuration",
+            type = "object",
+        },
+        logger = {
+            type = "array",
+            items = {
+                properties = {
+                    name = {
+                        type = "string",
+                    },
+                    filter = {
+                        description = "logger filter rules",
+                        type = "array",
+                    },
+                    conf = {
+                        description = "logger plugin configuration",
+                        type = "object",
+                    },
+                },
+                dependencies = {
+                    name = {"conf"},
+                },
+            },
+        },
+
+    },
+    required = {"name"}
 }
 
 
@@ -819,6 +903,7 @@ _M.stream_route = {
         upstream = upstream_schema,
         upstream_id = id_schema,
         plugins = plugins_schema,
+        protocol = xrpc_protocol_schema,
     }
 }
 
@@ -855,13 +940,47 @@ _M.plugin_config = {
 }
 
 
+_M.consumer_group = {
+    type = "object",
+    properties = {
+        id = id_schema,
+        desc = desc_def,
+        plugins = plugins_schema,
+        labels = labels_def,
+        create_time = timestamp_def,
+        update_time = timestamp_def
+    },
+    required = {"id", "plugins"},
+}
+
+
 _M.id_schema = id_schema
 
 
 _M.plugin_injected_schema = {
     ["$comment"] = "this is a mark for our injected plugin schema",
-    disable = {
-        type = "boolean",
+    _meta = {
+        type = "object",
+        properties = {
+            disable = {
+                type = "boolean",
+            },
+            error_response = {
+                oneOf = {
+                    { type = "string" },
+                    { type = "object" },
+                }
+            },
+            priority = {
+                description = "priority of plugins by customized order",
+                type = "integer",
+            },
+            filter = {
+                description = "filter determines whether the plugin "..
+                                "needs to be executed at runtime",
+                type  = "array",
+            }
+        }
     }
 }
 

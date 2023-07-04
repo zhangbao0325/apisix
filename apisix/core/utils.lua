@@ -14,6 +14,11 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 --
+
+--- Collection of util functions.
+--
+-- @module core.utils
+
 local config_local   = require("apisix.core.config_local")
 local core_str       = require("apisix.core.string")
 local rfind_char     = core_str.rfind_char
@@ -235,7 +240,14 @@ function _M.validate_header_value(value)
 end
 
 
+---
+-- Returns the standard host name of the local host.
 -- only use this method in init/init_worker phase.
+--
+-- @function core.utils.gethostname
+-- @treturn string The host name of the local host.
+-- @usage
+-- local hostname = core.utils.gethostname() -- "localhost"
 function _M.gethostname()
     if hostname then
         return hostname
@@ -281,6 +293,7 @@ do
     local _ctx
     local n_resolved
     local pat = [[(?<!\\)\$\{?(\w+)\}?]]
+    local _escaper
 
     local function resolve(m)
         local v = _ctx[m[1]]
@@ -288,10 +301,13 @@ do
             return ""
         end
         n_resolved = n_resolved + 1
+        if _escaper then
+            return _escaper(tostring(v))
+        end
         return tostring(v)
     end
 
-    function resolve_var(tpl, ctx)
+    function resolve_var(tpl, ctx, escaper)
         n_resolved = 0
         if not tpl then
             return tpl, nil, n_resolved
@@ -304,8 +320,10 @@ do
 
         -- avoid creating temporary function
         _ctx = ctx
+        _escaper = escaper
         local res, _, err = re_gsub(tpl, pat, resolve, "jo")
         _ctx = nil
+        _escaper = nil
         if not res then
             return nil, err
         end
@@ -315,6 +333,47 @@ do
 end
 -- Resolve ngx.var in the given string
 _M.resolve_var = resolve_var
+
+
+local resolve_var_with_captures
+do
+    local _captures
+    -- escape is not supported very well, like there is a redundant '\' after escape "$1"
+    local pat = [[ (?<! \\) \$ \{? (\d+) \}? ]]
+
+    local function resolve(m)
+        local v = _captures[tonumber(m[1])]
+        if not v then
+            v = ""
+        end
+        return v
+    end
+
+    -- captures is the match result of regex uri in proxy-rewrite plugin
+    function resolve_var_with_captures(tpl, captures)
+        if not tpl then
+            return tpl, nil
+        end
+
+        local from = core_str.find(tpl, "$")
+        if not from then
+            return tpl, nil
+        end
+
+        captures = captures or {}
+
+        _captures = captures
+        local res, _, err = re_gsub(tpl, pat, resolve, "jox")
+        _captures = nil
+        if not res then
+            return nil, err
+        end
+
+        return res, nil
+    end
+end
+-- Resolve {$1, $2, ...} in the given string
+_M.resolve_var_with_captures = resolve_var_with_captures
 
 
 return _M

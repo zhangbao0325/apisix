@@ -14,6 +14,11 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 --
+
+--- Wrapped string module.
+--
+-- @module core.string
+
 local error = error
 local type = type
 local str_byte = string.byte
@@ -21,6 +26,9 @@ local str_find = string.find
 local ffi         = require("ffi")
 local C           = ffi.C
 local ffi_cast    = ffi.cast
+local ngx         = ngx
+local ngx_decode_args  = ngx.decode_args
+local ngx_encode_args  = ngx.encode_args
 
 
 ffi.cdef[[
@@ -42,7 +50,15 @@ function _M.find(haystack, needle, from)
     return str_find(haystack, needle, from or 1, true)
 end
 
-
+---
+--  Tests whether the string s begins with prefix.
+--
+-- @function core.string.has_prefix
+-- @tparam string s The string being tested.
+-- @tparam string prefix Specify the prefix.
+-- @treturn boolean Test result, true means the string s begins with prefix.
+-- @usage
+-- local res = core.string.has_prefix("/apisix/admin/routes", "/apisix/") -- true
 function _M.has_prefix(s, prefix)
     if type(s) ~= "string" or type(prefix) ~= "string" then
         error("unexpected type: s:" .. type(s) .. ", prefix:" .. type(prefix))
@@ -77,5 +93,44 @@ function _M.rfind_char(s, ch, idx)
     return nil
 end
 
+
+-- reduce network consumption by compressing string indentation
+-- this method should be used with caution
+-- it will remove the spaces at the beginning of each line
+-- and remove the spaces after `,` character
+function _M.compress_script(s)
+    s = ngx.re.gsub(s, [[^\s+]], "", "mjo")
+    s = ngx.re.gsub(s, [[,\s+]], ",", "mjo")
+    return s
+end
+
+
+---
+-- Decodes a URI encoded query-string into a Lua table.
+-- All request arguments received will be decoded by default.
+--
+-- @function core.string.decode_args
+-- @tparam string args A URI encoded query-string.
+-- @treturn table the value of decoded query-string.
+-- @usage
+-- local args, err = core.string.decode_args("a=1&b=2") -- {a=1, b=2}
+function _M.decode_args(args)
+    -- use 0 to avoid truncated result and keep the behavior as the
+    -- same as other platforms
+    return ngx_decode_args(args, 0)
+end
+
+
+---
+-- Encode the Lua table to a query args string according to the URI encoded rules.
+--
+-- @function core.string.encode_args
+-- @tparam table args The query args Lua table.
+-- @treturn string the value of query args string.
+-- @usage
+-- local str = core.string.encode_args({a=1, b=2}) -- "a=1&b=2"
+function _M.encode_args(args)
+    return ngx_encode_args(args)
+end
 
 return _M

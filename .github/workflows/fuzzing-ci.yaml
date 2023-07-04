@@ -16,6 +16,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.run_number || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   test_apisix:
     name: run fuzzing
@@ -24,12 +27,12 @@ jobs:
 
     steps:
     - name: Check out code
-      uses: actions/checkout@v2.4.0
+      uses: actions/checkout@v3.2.0
       with:
         submodules: recursive
 
     - name: Cache deps
-      uses: actions/cache@v2.1.7
+      uses: actions/cache@v3
       env:
         cache-name: cache-deps
       with:
@@ -50,7 +53,6 @@ jobs:
         sudo apt-get install -y git openresty curl openresty-openssl111-dev unzip make gcc libldap2-dev
         ./utils/linux-install-luarocks.sh
 
-        git config --global url.https://github.com/.insteadOf git://github.com/
         make deps
         make init
         make run
@@ -61,21 +63,16 @@ jobs:
 
     - name: install boofuzz
       run: |
+        # Avoid "ERROR: flask has requirement click>=8.0, but you'll have click 7.0 which is incompatible"
+        sudo apt remove python3-click
         pip install -r $PWD/t/fuzzing/requirements.txt
 
-    - name: run simpleroute test
+    - name: run tests
       run: |
+        export APISIX_FUZZING_PWD=$PWD
         python $PWD/t/fuzzing/simpleroute_test.py
-
-    - name: run serverless route test
-      run: |
         python $PWD/t/fuzzing/serverless_route_test.py
-
-    - name: run vars route test
-      run: |
         python $PWD/t/fuzzing/vars_route_test.py
-
-    - name: run check leak test
-      run: |
         python $PWD/t/fuzzing/client_abort.py
         python $PWD/t/fuzzing/simple_http.py
+        python $PWD/t/fuzzing/http_upstream.py

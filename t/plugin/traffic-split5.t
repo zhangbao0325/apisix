@@ -28,10 +28,6 @@ add_block_preprocessor(sub {
         $block->set_value("request", "GET /t");
     }
 
-    if (!$block->error_log && !$block->no_error_log) {
-        $block->set_value("no_error_log", "[error]");
-    }
-
     my $http_config = $block->http_config // <<_EOC_;
     # fake server, only for test
     server {
@@ -154,12 +150,8 @@ __DATA__
             ngx.say(body)
         }
     }
---- request
-GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -272,12 +264,8 @@ passed
             ngx.say(body)
         }
     }
---- request
-GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -311,3 +299,164 @@ passed
     }
 --- response_body
 1970, 1970, 1971, 1972, 1972, 1973
+
+
+
+=== TEST 5: set upstream(multiple rules, the first rule has the match attribute and the second rule does not) and add route
+--- config
+    location /t {
+        content_by_lua_block {
+            local json = require("toolkit.json")
+            local t = require("lib.test_admin").test
+            local data = {
+                uri = "/hello",
+                plugins = {
+                    ["traffic-split"] = {
+                        rules = {
+                            {
+                                match = { {
+                                    vars = { { "arg_id", "==", "1" } }
+                                } },
+                                weighted_upstreams = {
+                                    {
+                                        upstream = {
+                                            name = "upstream_A",
+                                            type = "roundrobin",
+                                            nodes = {
+                                                ["127.0.0.1:1970"] = 1
+                                            }
+                                        },
+                                        weight = 1
+                                    }
+                               }
+                            },
+                            {
+                                weighted_upstreams = {
+                                    {
+                                        upstream = {
+                                            name = "upstream_B",
+                                            type = "roundrobin",
+                                            nodes = {
+                                                ["127.0.0.1:1971"] = 1
+                                            }
+                                        },
+                                        weight = 1
+                                    },
+                                    {
+                                        weight = 1
+                                    }
+                               }
+                            }
+                        }
+                    }
+                },
+                upstream = {
+                    type = "roundrobin",
+                    nodes = {
+                        ["127.0.0.1:1972"] = 1
+                    }
+                }
+            }
+            local code, body = t('/apisix/admin/routes/1',
+                ngx.HTTP_PUT,
+                json.encode(data)
+            )
+            if code >= 300 then
+                ngx.status = code
+            end
+            ngx.say(body)
+        }
+    }
+--- response_body
+passed
+
+
+
+=== TEST 6: first rule match failed and the second rule match success
+--- config
+    location /t {
+        content_by_lua_block {
+            local http = require "resty.http"
+            local httpc = http.new()
+
+            local uri = "http://127.0.0.1:" .. ngx.var.server_port .. "/hello?id=1"
+            local ports = {}
+            local res, err
+            for i = 1, 2 do
+                res, err = httpc:request_uri(uri)
+                local port = tonumber(res.body)
+                ports[i] = port
+            end
+
+            local uri = "http://127.0.0.1:" .. ngx.var.server_port .. "/hello?id=2"
+            for i = 3, 4 do
+                res, err = httpc:request_uri(uri)
+                local port = tonumber(res.body)
+                ports[i] = port
+            end
+            table.sort(ports)
+
+            ngx.say(table.concat(ports, ", "))
+        }
+    }
+--- response_body
+1970, 1970, 1971, 1972
+
+
+
+=== TEST 7: set up traffic-split rule
+--- config
+    location /t {
+        content_by_lua_block {
+            local json = require("toolkit.json")
+            local t = require("lib.test_admin").test
+            local data = {
+                uri = "/server_port",
+                plugins = {
+                    ["traffic-split"] = {
+                        rules = { {
+                            match = { {
+                                vars = { { "arg_name", "==", "jack" } }
+                            } },
+                            weighted_upstreams = { {
+                                upstream = {
+                                    type = "roundrobin",
+                                    nodes = {
+                                        ["127.0.0.1:1979"] = 1
+                                    },
+                                },
+                            } }
+                        } }
+                    }
+                },
+                upstream = {
+                    type = "roundrobin",
+                    nodes = {
+                        ["127.0.0.1:1980"] = 1
+                    }
+                }
+            }
+            local code, body = t('/apisix/admin/routes/1',
+                ngx.HTTP_PUT,
+                json.encode(data)
+            )
+            if code >= 300 then
+                ngx.status = code
+            end
+            ngx.say(body)
+        }
+    }
+--- response_body
+passed
+
+
+
+=== TEST 8: hit and check default timeout
+--- http_config
+proxy_connect_timeout 12345s;
+--- request
+GET /server_port?name=jack
+--- log_level: debug
+--- error_log eval
+qr/event timer add: \d+: 12345000:\d+/
+--- error_code: 502

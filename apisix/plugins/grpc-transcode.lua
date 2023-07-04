@@ -65,21 +65,48 @@ local schema = {
             type = "array",
             items = { type="string", anyOf = pb_option_def },
             minItems = 1,
+            default = {
+                "enum_as_name",
+                "int64_as_number",
+                "auto_default_values",
+                "disable_hooks",
+            }
+        },
+        show_status_in_body = {
+            description = "show decoded grpc-status-details-bin in response body",
+            type        = "boolean",
+            default     = false
+        },
+        -- https://github.com/googleapis/googleapis/blob/b7cb84f5d42e6dba0fdcc2d8689313f6a8c9d7b9/
+        -- google/rpc/status.proto#L46
+        status_detail_type = {
+            description = "the message type of the grpc-status-details-bin's details part, "
+                            .. "if not given, the details part will not be decoded",
+            type        = "string",
         },
     },
     additionalProperties = true,
     required = { "proto_id", "service", "method" },
 }
 
+-- Based on https://cloud.google.com/apis/design/errors#handling_errors
 local status_rel = {
-    ["3"] = 400,
-    ["4"] = 504,
-    ["5"] = 404,
-    ["7"] = 403,
-    ["11"] = 416,
-    ["12"] = 501,
-    ["13"] = 500,
-    ["14"] = 503,
+    ["1"] = 499,    -- CANCELLED
+    ["2"] = 500,    -- UNKNOWN
+    ["3"] = 400,    -- INVALID_ARGUMENT
+    ["4"] = 504,    -- DEADLINE_EXCEEDED
+    ["5"] = 404,    -- NOT_FOUND
+    ["6"] = 409,    -- ALREADY_EXISTS
+    ["7"] = 403,    -- PERMISSION_DENIED
+    ["8"] = 429,    -- RESOURCE_EXHAUSTED
+    ["9"] = 400,    -- FAILED_PRECONDITION
+    ["10"] = 409,   -- ABORTED
+    ["11"] = 400,   -- OUT_OF_RANGE
+    ["12"] = 501,   -- UNIMPLEMENTED
+    ["13"] = 500,   -- INTERNAL
+    ["14"] = 503,   -- UNAVAILABLE
+    ["15"] = 500,   -- DATA_LOSS
+    ["16"] = 401,   -- UNAUTHENTICATED
 }
 
 local _M = {
@@ -92,6 +119,11 @@ local _M = {
 
 function _M.init()
     proto.init()
+end
+
+
+function _M.destroy()
+    proto.destroy()
 end
 
 
@@ -128,6 +160,7 @@ function _M.access(conf, ctx)
     end
 
     ctx.proto_obj = proto_obj
+
 end
 
 
@@ -137,9 +170,10 @@ function _M.header_filter(conf, ctx)
     end
 
     ngx.header["Content-Type"] = "application/json"
-    ngx.header["Trailer"] = {"grpc-status", "grpc-message"}
+    ngx.header.content_length = nil
 
     local headers = ngx.resp.get_headers()
+
     if headers["grpc-status"] ~= nil and headers["grpc-status"] ~= "0" then
         local http_status = status_rel[headers["grpc-status"]]
         if http_status ~= nil then
@@ -147,14 +181,16 @@ function _M.header_filter(conf, ctx)
         else
             ngx.status = 599
         end
-        return
+    else
+        -- The error response body does not contain grpc-status and grpc-message
+        ngx.header["Trailer"] = {"grpc-status", "grpc-message"}
     end
 
 end
 
 
 function _M.body_filter(conf, ctx)
-    if ngx.status >= 300 then
+    if ngx.status >= 300 and not conf.show_status_in_body then
         return
     end
 
@@ -163,7 +199,8 @@ function _M.body_filter(conf, ctx)
         return
     end
 
-    local err = response(ctx, proto_obj, conf.service, conf.method, conf.pb_option)
+    local err = response(ctx, proto_obj, conf.service, conf.method, conf.pb_option,
+                         conf.show_status_in_body, conf.status_detail_type)
     if err then
         core.log.error("transform response error: ", err)
         return

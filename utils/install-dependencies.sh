@@ -20,14 +20,19 @@
 set -ex
 
 function detect_aur_helper() {
-    if [[ $(which yay) ]]; then
+    if [[ $(command -v yay) ]]; then
         AUR_HELPER=yay
-    elif [[ $(which pacaur) ]]; then
+    elif [[ $(command -v pacaur) ]]; then
         AUR_HELPER=pacaur
     else
         echo No available AUR helpers found. Please specify your AUR helper by AUR_HELPER.
-        exit -1
+        exit 255
     fi
+}
+
+function install_rust() {
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sudo sh -s -- -y
+    source "$HOME/.cargo/env"
 }
 
 function install_dependencies_with_aur() {
@@ -44,12 +49,13 @@ function install_dependencies_with_aur() {
 
 # Install dependencies on centos and fedora
 function install_dependencies_with_yum() {
-    sudo yum install yum-utils
+    sudo yum install -y yum-utils
 
-    local common_dep="curl git gcc openresty-openssl111-devel unzip pcre pcre-devel openldap-devel"
+    local common_dep="curl wget git gcc openresty-openssl111-devel unzip pcre pcre-devel openldap-devel"
     if [ "${1}" == "centos" ]; then
         # add APISIX source
-        sudo yum-config-manager --add-repo https://repos.apiseven.com/packages/centos/apache-apisix.repo
+        local apisix_pkg=apache-apisix-repo-1.0-1.noarch
+        rpm -q --quiet ${apisix_pkg} || sudo yum install -y https://repos.apiseven.com/packages/centos/${apisix_pkg}.rpm
 
         # install apisix-base and some compilation tools
         # shellcheck disable=SC2086
@@ -62,6 +68,8 @@ function install_dependencies_with_yum() {
         # shellcheck disable=SC2086
         sudo yum install -y openresty $common_dep
     fi
+
+    install_rust
 }
 
 # Install dependencies on ubuntu and debian
@@ -70,24 +78,28 @@ function install_dependencies_with_apt() {
     sudo apt-get update
     sudo apt-get -y install software-properties-common wget lsb-release
     wget -qO - https://openresty.org/package/pubkey.gpg | sudo apt-key add -
+    arch=$(uname -m | tr '[:upper:]' '[:lower:]')
+    arch_path=""
+    if [[ $arch == "arm64" ]] || [[ $arch == "aarch64" ]]; then
+        arch_path="arm64/"
+    fi
     if [[ "${1}" == "ubuntu" ]]; then
-        sudo add-apt-repository -y "deb http://openresty.org/package/ubuntu $(lsb_release -sc) main"
+        sudo add-apt-repository -y "deb http://openresty.org/package/${arch_path}ubuntu $(lsb_release -sc) main"
     elif [[ "${1}" == "debian" ]]; then
-        sudo add-apt-repository -y "deb http://openresty.org/package/debian $(lsb_release -sc) openresty"
+        sudo add-apt-repository -y "deb http://openresty.org/package/${arch_path}debian $(lsb_release -sc) openresty"
     fi
     sudo apt-get update
 
     # install OpenResty and some compilation tools
-    sudo apt-get install -y git openresty curl openresty-openssl111-dev make gcc libpcre3 libpcre3-dev libldap2-dev
+    sudo apt-get install -y git openresty curl openresty-openssl111-dev make gcc libpcre3 libpcre3-dev libldap2-dev unzip
+
+    install_rust
 }
 
 # Install dependencies on mac osx
 function install_dependencies_on_mac_osx() {
     # install OpenResty, etcd and some compilation tools
-    brew install openresty/brew/openresty luarocks lua@5.1 etcd curl git pcre openldap
-
-    # start etcd server
-    brew services start etcd
+    brew install openresty/brew/openresty luarocks lua@5.1 wget curl git pcre openldap
 }
 
 # Identify the different distributions and call the corresponding function
@@ -107,16 +119,6 @@ function multi_distro_installation() {
     fi
 }
 
-# Install etcd
-function install_etcd() {
-    ETCD_VERSION='3.4.13'
-    wget https://github.com/etcd-io/etcd/releases/download/v${ETCD_VERSION}/etcd-v${ETCD_VERSION}-linux-amd64.tar.gz
-    tar -xvf etcd-v${ETCD_VERSION}-linux-amd64.tar.gz && \
-        cd etcd-v${ETCD_VERSION}-linux-amd64 && \
-        sudo cp -a etcd etcdctl /usr/bin/
-    nohup etcd &
-}
-
 # Install LuaRocks
 function install_luarocks() {
     curl https://raw.githubusercontent.com/apache/apisix/master/utils/linux-install-luarocks.sh -sL | bash -
@@ -125,15 +127,27 @@ function install_luarocks() {
 # Entry
 function main() {
     OS_NAME=$(uname -s | tr '[:upper:]' '[:lower:]')
-    if [[ "${OS_NAME}" == "linux" ]]; then
-        multi_distro_installation
-        install_luarocks
-        install_etcd
-    elif [[ "${OS_NAME}" == "darwin" ]]; then
-        install_dependencies_on_mac_osx
-    else
-        echo "Non-surported distribution"
+    if [[ "$#" == 0 ]]; then
+        if [[ "${OS_NAME}" == "linux" ]]; then
+            multi_distro_installation
+            install_luarocks
+        elif [[ "${OS_NAME}" == "darwin" ]]; then
+            install_dependencies_on_mac_osx
+        else
+            echo "Non-supported distribution"
+        fi
+        return
     fi
+
+    case_opt=$1
+    case "${case_opt}" in
+        "install_luarocks")
+            install_luarocks
+        ;;
+        *)
+            echo "Unsupported method: ${case_opt}"
+        ;;
+    esac
 }
 
-main
+main "$@"

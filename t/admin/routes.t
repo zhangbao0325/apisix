@@ -45,23 +45,20 @@ __DATA__
                     "uri": "/index.html"
                 }]],
                 [[{
-                    "node": {
-                        "value": {
-                            "methods": [
-                                "GET"
-                            ],
-                            "uri": "/index.html",
-                            "desc": "new route",
-                            "upstream": {
-                                "nodes": {
-                                    "127.0.0.1:8080": 1
-                                },
-                                "type": "roundrobin"
-                            }
-                        },
-                        "key": "/apisix/routes/1"
+                    "value": {
+                        "methods": [
+                            "GET"
+                        ],
+                        "uri": "/index.html",
+                        "desc": "new route",
+                        "upstream": {
+                            "nodes": {
+                                "127.0.0.1:8080": 1
+                            },
+                            "type": "roundrobin"
+                        }
                     },
-                    "action": "set"
+                    "key": "/apisix/routes/1"
                 }]]
                 )
 
@@ -73,8 +70,6 @@ __DATA__
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -87,23 +82,20 @@ passed
                  ngx.HTTP_GET,
                  nil,
                 [[{
-                    "node": {
-                        "value": {
-                            "methods": [
-                                "GET"
-                            ],
-                            "uri": "/index.html",
-                            "desc": "new route",
-                            "upstream": {
-                                "nodes": {
-                                    "127.0.0.1:8080": 1
-                                },
-                                "type": "roundrobin"
-                            }
-                        },
-                        "key": "/apisix/routes/1"
+                    "value": {
+                        "methods": [
+                            "GET"
+                        ],
+                        "uri": "/index.html",
+                        "desc": "new route",
+                        "upstream": {
+                            "nodes": {
+                                "127.0.0.1:8080": 1
+                            },
+                            "type": "roundrobin"
+                        }
                     },
-                    "action": "get"
+                    "key": "/apisix/routes/1"
                 }]]
                 )
 
@@ -115,8 +107,6 @@ passed
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -126,12 +116,8 @@ passed
         content_by_lua_block {
             local t = require("lib.test_admin").test
             local code, message = t('/apisix/admin/routes/1',
-                 ngx.HTTP_DELETE,
-                 nil,
-                 [[{
-                    "action": "delete"
-                }]]
-                )
+                 ngx.HTTP_DELETE
+            )
             ngx.say("[delete] code: ", code, " message: ", message)
         }
     }
@@ -139,8 +125,6 @@ passed
 GET /t
 --- response_body
 [delete] code: 200 message: passed
---- no_error_log
-[error]
 
 
 
@@ -150,12 +134,8 @@ GET /t
         content_by_lua_block {
             local t = require("lib.test_admin").test
             local code = t('/apisix/admin/routes/not_found',
-                 ngx.HTTP_DELETE,
-                 nil,
-                 [[{
-                    "action": "delete"
-                }]]
-                )
+                 ngx.HTTP_DELETE
+            )
             ngx.say("[delete] code: ", code)
         }
     }
@@ -163,8 +143,6 @@ GET /t
 GET /t
 --- response_body
 [delete] code: 404
---- no_error_log
-[error]
 
 
 
@@ -187,21 +165,18 @@ GET /t
                         "uri": "/index.html"
                 }]],
                 [[{
-                    "node": {
-                        "value": {
-                            "methods": [
-                                "GET"
-                            ],
-                            "uri": "/index.html",
-                            "upstream": {
-                                "nodes": {
-                                    "127.0.0.1:8080": 1
-                                },
-                                "type": "roundrobin"
-                            }
+                    "value": {
+                        "methods": [
+                            "GET"
+                        ],
+                        "uri": "/index.html",
+                        "upstream": {
+                            "nodes": {
+                                "127.0.0.1:8080": 1
+                            },
+                            "type": "roundrobin"
                         }
-                    },
-                    "action": "create"
+                    }
                 }]]
                 )
 
@@ -212,8 +187,7 @@ GET /t
             end
 
             ngx.say("[push] code: ", code, " message: ", message)
-
-            local id = string.sub(res.node.key, #"/apisix/routes/" + 1)
+            local id = string.sub(res.key, #"/apisix/routes/" + 1)
             local res = assert(etcd.get('/routes/' .. id))
             local create_time = res.body.node.value.create_time
             assert(create_time ~= nil, "create_time is nil")
@@ -221,12 +195,8 @@ GET /t
             assert(update_time ~= nil, "update_time is nil")
 
             code, message = t('/apisix/admin/routes/' .. id,
-                 ngx.HTTP_DELETE,
-                 nil,
-                 [[{
-                    "action": "delete"
-                }]]
-                )
+                 ngx.HTTP_DELETE
+            )
             ngx.say("[delete] code: ", code, " message: ", message)
         }
     }
@@ -235,8 +205,6 @@ GET /t
 --- response_body
 [push] code: 200 message: passed
 [delete] code: 200 message: passed
---- no_error_log
-[error]
 
 
 
@@ -259,18 +227,15 @@ GET /t
                         "uri": "/index.html"
                 }]],
                 [[{
-                    "node": {
-                        "value": {
-                            "uri": "/index.html",
-                            "upstream": {
-                                "nodes": {
-                                    "127.0.0.1:8080": 1
-                                },
-                                "type": "roundrobin"
-                            }
+                    "value": {
+                        "uri": "/index.html",
+                        "upstream": {
+                            "nodes": {
+                                "127.0.0.1:8080": 1
+                            },
+                            "type": "roundrobin"
                         }
-                    },
-                    "action": "set"
+                    }
                 }]]
                 )
 
@@ -293,8 +258,6 @@ GET /t
 GET /t
 --- response_body
 [push] code: 200 message: passed
---- no_error_log
-[error]
 
 
 
@@ -318,20 +281,17 @@ GET /t
                     "uri": "/index.html"
                 }]],
                 [[{
-                    "node": {
-                        "value": {
-                            "uri": "/index.html",
-                            "plugins": {
-                                "limit-count": {
-                                    "count": 2,
-                                    "time_window": 60,
-                                    "rejected_code": 503,
-                                    "key": "remote_addr"
-                                }
+                    "value": {
+                        "uri": "/index.html",
+                        "plugins": {
+                            "limit-count": {
+                                "count": 2,
+                                "time_window": 60,
+                                "rejected_code": 503,
+                                "key": "remote_addr"
                             }
                         }
-                    },
-                    "action": "set"
+                    }
                 }]]
                 )
 
@@ -348,8 +308,6 @@ GET /t
 GET /t
 --- response_body
 [push] code: 200 message: passed
---- no_error_log
-[error]
 
 
 
@@ -380,8 +338,6 @@ GET /t
 GET /t
 --- error_code: 400
 --- response_body_like
---- no_error_log
-[error]
 
 
 
@@ -407,8 +363,6 @@ GET /t
 --- error_code: 400
 --- response_body
 {"error_msg":"invalid configuration: property \"methods\" validation failed: failed to validate item 1: matches none of the enum values"}
---- no_error_log
-[error]
 
 
 
@@ -433,9 +387,7 @@ GET /t
 GET /t
 --- error_code: 400
 --- response_body
-{"error_msg":"invalid configuration: property \"service_id\" validation failed: object matches none of the requireds"}
---- no_error_log
-[error]
+{"error_msg":"invalid configuration: property \"service_id\" validation failed: object matches none of the required"}
 
 
 
@@ -461,8 +413,6 @@ GET /t
 --- error_code: 400
 --- response_body
 {"error_msg":"failed to fetch service info by service id [99999999999999], response code: 404"}
---- no_error_log
-[error]
 
 
 
@@ -488,8 +438,6 @@ GET /t
 --- error_code: 400
 --- response_body
 {"error_msg":"wrong route id"}
---- no_error_log
-[error]
 
 
 
@@ -515,8 +463,6 @@ GET /t
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -541,9 +487,7 @@ passed
 GET /t
 --- error_code: 400
 --- response_body
-{"error_msg":"invalid configuration: property \"id\" validation failed: object matches none of the requireds"}
---- no_error_log
-[error]
+{"error_msg":"invalid configuration: property \"id\" validation failed: object matches none of the required"}
 
 
 
@@ -568,9 +512,7 @@ GET /t
 GET /t
 --- error_code: 400
 --- response_body
-{"error_msg":"invalid configuration: property \"upstream_id\" validation failed: object matches none of the requireds"}
---- no_error_log
-[error]
+{"error_msg":"invalid configuration: property \"upstream_id\" validation failed: object matches none of the required"}
 
 
 
@@ -596,8 +538,6 @@ GET /t
 --- error_code: 400
 --- response_body
 {"error_msg":"failed to fetch upstream info by upstream id [99999999], response code: 404"}
---- no_error_log
-[error]
 
 
 
@@ -624,8 +564,6 @@ GET /t
 --- error_code: 400
 --- response_body
 {"error_msg":"wrong route id, do not need it"}
---- no_error_log
-[error]
 
 
 
@@ -651,8 +589,6 @@ GET /t
 --- error_code: 400
 --- response_body
 {"error_msg":"wrong route id, do not need it"}
---- no_error_log
-[error]
 
 
 
@@ -671,7 +607,9 @@ GET /t
                             "time_window": 60,
                             "rejected_code": 503,
                             "key": "remote_addr",
-                            "disable": true
+                            "_meta": {
+                                "disable": true
+                            }
                         }
                     },
                     "uri": "/index.html"
@@ -691,8 +629,6 @@ GET /t
 GET /t
 --- response_body
 [push] code: 200 message: passed
---- no_error_log
-[error]
 
 
 
@@ -714,20 +650,17 @@ GET /t
                         "uri": "/index.html"
                 }]],
                 [[{
-                    "node": {
-                        "value": {
-                            "host": "*.foo.com",
-                            "uri": "/index.html",
-                            "upstream": {
-                                "nodes": {
-                                    "127.0.0.1:8080": 1
-                                },
-                                "type": "roundrobin"
-                            }
-                        },
-                        "key": "/apisix/routes/1"
+                    "value": {
+                        "host": "*.foo.com",
+                        "uri": "/index.html",
+                        "upstream": {
+                            "nodes": {
+                                "127.0.0.1:8080": 1
+                            },
+                            "type": "roundrobin"
+                        }
                     },
-                    "action": "set"
+                    "key": "/apisix/routes/1"
                 }]]
                 )
 
@@ -739,8 +672,6 @@ GET /t
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -772,8 +703,6 @@ GET /t
 --- error_code: 400
 --- response_body_like
 {"error_msg":"invalid configuration: property \\"host\\" validation failed: failed to match pattern .*
---- no_error_log
-[error]
 
 
 
@@ -805,5 +734,3 @@ GET /t
 --- error_code: 400
 --- response_body_like
 {"error_msg":"invalid configuration: property \\"host\\" validation failed: failed to match pattern .*
---- no_error_log
-[error]

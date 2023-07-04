@@ -19,53 +19,64 @@
 . ./ci/common.sh
 
 before_install() {
-    sudo cpanm --notest Test::Nginx >build.log 2>&1 || (cat build.log && exit 1)
+    linux_get_dependencies
 
-    # launch deps env
-    make ci-env-up
-    ./ci/linux-ci-init-service.sh
+    sudo cpanm --notest Test::Nginx >build.log 2>&1 || (cat build.log && exit 1)
 }
 
 do_install() {
     export_or_prefix
 
-    ./utils/linux-install-openresty.sh
+    ./ci/linux-install-openresty.sh
 
     ./utils/linux-install-luarocks.sh
 
-    ./utils/linux-install-etcd-client.sh
+    ./ci/linux-install-etcd-client.sh
+
+    # install rust
+    install_rust
 
     create_lua_deps
 
     # sudo apt-get install tree -y
     # tree deps
 
-    git clone https://github.com/iresty/test-nginx.git test-nginx
+    git clone --depth 1 https://github.com/openresty/test-nginx.git test-nginx
     make utils
 
     mkdir -p build-cache
     # install and start grpc_server_example
     cd t/grpc_server_example
 
-    if [ ! "$(ls -A . )" ]; then # for local development only
-        git submodule init
-        git submodule update
-    fi
     CGO_ENABLED=0 go build
     cd ../../
 
-    # installing grpcurl
+    # install grpcurl
     install_grpcurl
+
+    # install nodejs
+    install_nodejs
+
+    # grpc-web server && client
+    cd t/plugin/grpc-web
+    ./setup.sh
+    # back to home directory
+    cd ../../../
+
+    # install vault cli capabilities
+    install_vault_cli
 }
 
 script() {
     export_or_prefix
     openresty -V
 
-    ./utils/set-dns.sh
+    make init
+
+    set_coredns
 
     ./t/grpc_server_example/grpc_server_example \
-        -grpc-address :50051 -grpcs-address :50052 -grpcs-mtls-address :50053 \
+        -grpc-address :50051 -grpcs-address :50052 -grpcs-mtls-address :50053 -grpc-http-address :50054 \
         -crt ./t/certs/apisix.crt -key ./t/certs/apisix.key -ca ./t/certs/mtls_ca.crt \
         &
 
@@ -80,7 +91,8 @@ script() {
     done
 
     # APISIX_ENABLE_LUACOV=1 PERL5LIB=.:$PERL5LIB prove -Itest-nginx/lib -r t
-    FLUSH_ETCD=1 PERL5LIB=.:$PERL5LIB prove -Itest-nginx/lib -r t
+    FLUSH_ETCD=1 prove --timer -Itest-nginx/lib -I./ -r $TEST_FILE_SUB_DIR | tee /tmp/test.result
+    rerun_flaky_tests /tmp/test.result
 }
 
 after_success() {

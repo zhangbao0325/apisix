@@ -26,10 +26,6 @@ add_block_preprocessor(sub {
     if (!$block->request) {
         $block->set_value("request", "GET /t");
     }
-
-    if ((!defined $block->error_log) && (!defined $block->no_error_log)) {
-        $block->set_value("no_error_log", "[error]");
-    }
 });
 
 run_tests;
@@ -208,9 +204,8 @@ qr/failed to send data to rocketmq topic: .*, nameserver_list: \{"127.0.0.127":9
         content_by_lua_block {
             local t = require("lib.test_admin").test
             local code, body = t('/apisix/admin/plugin_metadata/rocketmq-logger',
-                ngx.HTTP_DELETE,
-                nil,
-                [[{"action": "delete"}]])
+                ngx.HTTP_DELETE
+            )
         }
     }
 --- response_body
@@ -412,3 +407,101 @@ hello world
 --- no_error_log eval
 qr/send data to rocketmq: \{.*"body":"hello world\\n"/
 --- wait: 2
+
+
+
+=== TEST 13: multi level nested expr conditions
+--- config
+    location /t {
+        content_by_lua_block {
+            local plugin = require("apisix.plugins.rocketmq-logger")
+            local ok, err = plugin.check_schema({
+                 topic = "test",
+                 key = "key1",
+                 nameserver_list = {
+                    "127.0.0.1:3"
+                 },
+                 include_req_body = true,
+                 include_req_body_expr = {
+                    {"request_length", "<", 1024},
+                    {"http_content_type", "in", {"application/xml", "application/json", "text/plain", "text/xml"}}
+                 },
+                 include_resp_body = true,
+                 include_resp_body_expr = {
+                    {"http_content_length", "<", 1024},
+                    {"http_content_type", "in", {"application/xml", "application/json", "text/plain", "text/xml"}}
+                 }
+            })
+            if not ok then
+                ngx.say(err)
+            end
+            ngx.say("done")
+        }
+    }
+--- response_body
+done
+
+
+
+=== TEST 14: data encryption for secret_key
+--- yaml_config
+apisix:
+    data_encryption:
+        enable: true
+        keyring:
+            - edd1c9f0985e76a2
+--- config
+    location /t {
+        content_by_lua_block {
+            local json = require("toolkit.json")
+            local t = require("lib.test_admin").test
+            local code, body = t('/apisix/admin/routes/1',
+                 ngx.HTTP_PUT,
+                 [[{
+                        "plugins": {
+                            "rocketmq-logger": {
+                                "nameserver_list" : [ "127.0.0.1:9876" ],
+                                "topic" : "test2",
+                                "access_key": "foo",
+                                "secret_key": "bar"
+                            }
+                        },
+                        "upstream": {
+                            "nodes": {
+                                "127.0.0.1:1980": 1
+                            },
+                            "type": "roundrobin"
+                        },
+                        "uri": "/hello"
+                }]]
+             )
+
+            if code >= 300 then
+                ngx.status = code
+                ngx.say(body)
+                return
+            end
+            ngx.sleep(0.1)
+
+            -- get plugin conf from admin api, password is decrypted
+            local code, message, res = t('/apisix/admin/routes/1',
+                ngx.HTTP_GET
+            )
+            res = json.decode(res)
+            if code >= 300 then
+                ngx.status = code
+                ngx.say(message)
+                return
+            end
+
+            ngx.say(res.value.plugins["rocketmq-logger"].secret_key)
+
+            -- get plugin conf from etcd, password is encrypted
+            local etcd = require("apisix.core.etcd")
+            local res = assert(etcd.get('/routes/1'))
+            ngx.say(res.body.node.value.plugins["rocketmq-logger"].secret_key)
+        }
+    }
+--- response_body
+bar
+77+NmbYqNfN+oLm0aX5akg==

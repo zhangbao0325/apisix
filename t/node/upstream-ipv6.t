@@ -57,8 +57,6 @@ __DATA__
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -85,8 +83,6 @@ passed
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -96,8 +92,6 @@ GET /not_found
 --- error_code: 404
 --- response_body
 {"error_msg":"404 Route Not Found"}
---- no_error_log
-[error]
 
 
 
@@ -106,5 +100,173 @@ GET /not_found
 GET /hello
 --- response_body
 hello world
---- no_error_log
-[error]
+
+
+
+=== TEST 5: set upstream(id: 1)
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin").test
+            local code, body = t('/apisix/admin/upstreams/1',
+                 ngx.HTTP_PUT,
+                 [[{
+                    "nodes": [
+                        {
+                            "weight": 100,
+                            "priority": 0,
+                            "host": "::1",
+                            "port": 1980
+                        }
+                    ],
+                    "type": "roundrobin",
+                    "desc": "new upstream"
+                }]]
+                )
+
+            if code >= 300 then
+                ngx.status = code
+            end
+            ngx.say(body)
+        }
+    }
+--- request
+GET /t
+--- response_body
+passed
+
+
+
+=== TEST 6: hit routes
+--- request
+GET /hello
+--- response_body
+hello world
+
+
+
+=== TEST 7: set upstream, one array item to specify node
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin").test
+            local code, body = t('/apisix/admin/upstreams/1',
+                 ngx.HTTP_PUT,
+                 [[{
+                    "nodes": [
+                        {
+                            "weight": 100,
+                            "priority": 0,
+                            "host": "[::1]",
+                            "port": 1980
+                        }
+                    ],
+                    "type": "roundrobin",
+                    "desc": "new upstream"
+                }]]
+                )
+
+            if code >= 300 then
+                ngx.status = code
+            end
+            ngx.say(body)
+        }
+    }
+--- request
+GET /t
+--- response_body
+passed
+
+
+
+=== TEST 8: hit routes
+--- request
+GET /hello
+--- response_body
+hello world
+
+
+
+=== TEST 9: set upstream, one hash key to specify node, in wrong format
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin").test
+            local code, body = t('/apisix/admin/upstreams/1',
+                 ngx.HTTP_PUT,
+                 [[{
+                    "nodes": {
+                        "::1:1980": 1
+                    },
+                    "type": "roundrobin",
+                    "desc": "new upstream"
+                }]]
+                )
+
+            if code >= 300 then
+                ngx.status = code
+            end
+            ngx.say(body)
+        }
+    }
+--- request
+GET /t
+--- response_body
+passed
+
+
+
+=== TEST 10: hit routes
+--- request
+GET /hello
+--- error_code: 502
+--- error_log
+connect() to [::0.1.25.128]:80 failed
+
+
+
+=== TEST 11: set upstream, two array items to specify nodes
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin").test
+            local code, body = t('/apisix/admin/upstreams/1',
+                 ngx.HTTP_PUT,
+                 [[{
+                    "nodes": [
+                        {
+                            "weight": 100,
+                            "priority": 0,
+                            "host": "::1",
+                            "port": 1980
+                        },
+                        {
+                            "weight": 100,
+                            "priority": 0,
+                            "host": "::1",
+                            "port": 1980
+                        }
+                    ],
+                    "type": "roundrobin",
+                    "desc": "new upstream"
+                }]]
+                )
+
+            if code >= 300 then
+                ngx.status = code
+            end
+            ngx.say(body)
+        }
+    }
+--- request
+GET /t
+--- response_body
+passed
+
+
+
+=== TEST 12: hit routes
+--- request
+GET /hello
+--- response_body
+hello world

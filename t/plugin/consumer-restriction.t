@@ -49,8 +49,6 @@ __DATA__
 GET /t
 --- response_body
 {"rejected_code":403,"title":"whitelist","type":"consumer_name","whitelist":["jack1","jack2"]}
---- no_error_log
-[error]
 
 
 
@@ -71,8 +69,6 @@ GET /t
 GET /t
 --- response_body
 done
---- no_error_log
-[error]
 
 
 
@@ -91,24 +87,11 @@ done
                             "password": "123456"
                         }
                     }
-                }]],
-                [[{
-                    "node": {
-                        "value": {
-                            "username": "jack1",
-                            "plugins": {
-                                "basic-auth": {
-                                    "username": "jack2019",
-                                    "password": "123456"
-                                }
-                            }
-                        }
-                    },
-                    "action": "set"
                 }]]
                 )
-
-            ngx.status = code
+            if code >= 300 then
+                ngx.status = code
+            end
             ngx.say(body)
         }
     }
@@ -116,8 +99,6 @@ done
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -136,24 +117,11 @@ passed
                             "password": "123456"
                         }
                     }
-                }]],
-                [[{
-                    "node": {
-                        "value": {
-                            "username": "jack2",
-                            "plugins": {
-                                "basic-auth": {
-                                    "username": "jack2020",
-                                    "password": "123456"
-                                }
-                            }
-                        }
-                    },
-                    "action": "set"
                 }]]
                 )
-
-            ngx.status = code
+            if code >= 300 then
+                ngx.status = code
+            end
             ngx.say(body)
         }
     }
@@ -161,8 +129,6 @@ passed
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -202,8 +168,6 @@ passed
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -213,8 +177,6 @@ GET /hello
 --- error_code: 401
 --- response_body
 {"message":"Missing authorization in request"}
---- no_error_log
-[error]
 
 
 
@@ -225,8 +187,6 @@ GET /hello
 Authorization: Basic amFjazIwMTk6MTIzNDU2
 --- response_body
 hello world
---- no_error_log
-[error]
 
 
 
@@ -238,8 +198,6 @@ Authorization: Basic amFjazIwMjA6MTIzNDU2
 --- error_code: 403
 --- response_body
 {"message":"The consumer_name is forbidden."}
---- no_error_log
-[error]
 
 
 
@@ -280,8 +238,6 @@ Authorization: Basic amFjazIwMjA6MTIzNDU2
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -291,8 +247,6 @@ GET /hello
 --- error_code: 401
 --- response_body
 {"message":"Missing authorization in request"}
---- no_error_log
-[error]
 
 
 
@@ -304,8 +258,6 @@ Authorization: Basic amFjazIwMTk6MTIzNDU2
 --- error_code: 403
 --- response_body
 {"message":"request is forbidden"}
---- no_error_log
-[error]
 
 
 
@@ -316,8 +268,6 @@ GET /hello
 Authorization: Basic amFjazIwMjA6MTIzNDU2
 --- response_body
 hello world
---- no_error_log
-[error]
 
 
 
@@ -356,8 +306,6 @@ hello world
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -367,8 +315,6 @@ GET /hello
 --- error_code: 401
 --- response_body
 {"message":"Missing authentication or identity verification."}
---- no_error_log
-[error]
 
 
 
@@ -380,8 +326,6 @@ Authorization: Basic amFjazIwMTk6MTIzNDU2
 --- error_code: 401
 --- response_body
 {"message":"Missing authentication or identity verification."}
---- no_error_log
-[error]
 
 
 
@@ -393,8 +337,6 @@ Authorization: Basic amFjazIwMjA6MTIzNDU2
 --- error_code: 401
 --- response_body
 {"message":"Missing authentication or identity verification."}
---- no_error_log
-[error]
 
 
 
@@ -433,8 +375,6 @@ Authorization: Basic amFjazIwMjA6MTIzNDU2
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -444,8 +384,6 @@ GET /hello
 --- error_code: 401
 --- response_body
 {"message":"Missing authentication or identity verification."}
---- no_error_log
-[error]
 
 
 
@@ -457,8 +395,6 @@ Authorization: Basic amFjazIwMTk6MTIzNDU2
 --- error_code: 401
 --- response_body
 {"message":"Missing authentication or identity verification."}
---- no_error_log
-[error]
 
 
 
@@ -470,8 +406,6 @@ Authorization: Basic amFjazIwMjA6MTIzNDU2
 --- error_code: 401
 --- response_body
 {"message":"Missing authentication or identity verification."}
---- no_error_log
-[error]
 
 
 
@@ -512,8 +446,6 @@ Authorization: Basic amFjazIwMjA6MTIzNDU2
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -525,8 +457,6 @@ Authorization: Basic amFjazIwMTk6MTIzNDU2
 --- error_code: 403
 --- response_body
 {"message":"The consumer_name is forbidden."}
---- no_error_log
-[error]
 
 
 
@@ -567,8 +497,6 @@ Authorization: Basic amFjazIwMTk6MTIzNDU2
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -579,8 +507,6 @@ GET /hello
 Authorization: Basic amFjazIwMTk6MTIzNDU2
 --- response_body
 hello world
---- no_error_log
-[error]
 
 
 
@@ -624,8 +550,6 @@ hello world
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -637,8 +561,6 @@ Authorization: Basic amFjazIwMTk6MTIzNDU2
 --- error_code: 403
 --- response_body
 {"message":"The consumer_name is forbidden."}
---- no_error_log
-[error]
 
 
 
@@ -649,8 +571,6 @@ GET /hello
 Authorization: Basic amFjazIwMjA6MTIzNDU2
 --- response_body
 hello world
---- no_error_log
-[error]
 
 
 
@@ -692,8 +612,6 @@ hello world
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -704,8 +622,6 @@ GET /hello
 Authorization: Basic amFjazIwMTk6MTIzNDU2
 --- response_body
 hello world
---- no_error_log
-[error]
 
 
 
@@ -717,8 +633,6 @@ Authorization: Basic amFjazIwMjA6MTIzNDU2
 --- error_code: 403
 --- response_body
 {"message":"The consumer_name is forbidden."}
---- no_error_log
-[error]
 
 
 
@@ -752,8 +666,6 @@ Authorization: Basic amFjazIwMjA6MTIzNDU2
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -764,8 +676,6 @@ GET /hello
 Authorization: Basic amFjazIwMTk6MTIzNDU2
 --- response_body
 hello world
---- no_error_log
-[error]
 
 
 
@@ -776,8 +686,6 @@ GET /hello
 Authorization: Basic amFjazIwMjA6MTIzNDU2
 --- response_body
 hello world
---- no_error_log
-[error]
 
 
 
@@ -786,8 +694,6 @@ hello world
 GET /hello
 --- response_body
 hello world
---- no_error_log
-[error]
 
 
 
@@ -806,25 +712,11 @@ hello world
                         "type": "roundrobin"
                     },
                     "desc": "new service 001"
-                }]],
-                [[{
-                    "node": {
-                        "value": {
-                            "upstream": {
-                                "nodes": {
-                                    "127.0.0.1:1980": 1
-                                },
-                                "type": "roundrobin"
-                            },
-                            "desc": "new service 001"
-                        },
-                        "key": "/apisix/services/1"
-                    },
-                    "action": "set"
                 }]]
                 )
-
-            ngx.status = code
+            if code >= 300 then
+                ngx.status = code
+            end
             ngx.say(body)
         }
     }
@@ -832,8 +724,6 @@ hello world
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -857,31 +747,11 @@ passed
                             "rejected_code": 401
                         }
                     }
-                }]],
-                [[{
-                    "node": {
-                        "value": {
-                            "username": "jack",
-                            "plugins": {
-                                "hmac-auth": {
-                                    "access_key": "my-access-key",
-                                    "secret_key": "my-secret-key",
-                                    "algorithm": "hmac-sha256",
-                                    "clock_skew": 0
-                                },
-                                "consumer-restriction": {
-                                    "type": "service_id",
-                                    "whitelist": [ "1" ],
-                                    "rejected_code": 401
-                                }
-                            }
-                        }
-                    },
-                    "action": "set"
                 }]]
                 )
-
-            ngx.status = code
+            if code >= 300 then
+                ngx.status = code
+            end
             ngx.say(body)
         }
     }
@@ -889,8 +759,6 @@ passed
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -915,28 +783,6 @@ passed
                         "hmac-auth": {}
                     }
 
-                }]],
-                [[{
-                    "node": {
-                        "value": {
-                            "methods": [
-                                "GET"
-                            ],
-                            "uri": "/hello",
-                            "upstream": {
-                                "nodes": {
-                                    "127.0.0.1:1980": 1
-                                },
-                                "type": "roundrobin"
-                            },
-                            "service_id": 1,
-                            "plugins": {
-                                "hmac-auth": {}
-                            }
-                        },
-                        "key": "/apisix/routes/1"
-                    },
-                    "action": "set"
                 }]]
                 )
 
@@ -948,8 +794,6 @@ passed
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -1008,8 +852,6 @@ location /t {
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -1028,25 +870,11 @@ passed
                         "type": "roundrobin"
                     },
                     "desc": "new service 002"
-                }]],
-                [[{
-                    "node": {
-                        "value": {
-                            "upstream": {
-                                "nodes": {
-                                    "127.0.0.1:1980": 1
-                                },
-                                "type": "roundrobin"
-                            },
-                            "desc": "new service 002"
-                        },
-                        "key": "/apisix/services/2"
-                    },
-                    "action": "set"
                 }]]
                 )
-
-            ngx.status = code
+            if code >= 300 then
+                ngx.status = code
+            end
             ngx.say(body)
         }
     }
@@ -1054,8 +882,6 @@ passed
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -1080,28 +906,6 @@ passed
                         "hmac-auth": {}
                     }
 
-                }]],
-                [[{
-                    "node": {
-                        "value": {
-                            "methods": [
-                                "GET"
-                            ],
-                            "uri": "/hello",
-                            "upstream": {
-                                "nodes": {
-                                    "127.0.0.1:1980": 1
-                                },
-                                "type": "roundrobin"
-                            },
-                            "service_id": 2,
-                            "plugins": {
-                                "hmac-auth": {}
-                            }
-                        },
-                        "key": "/apisix/routes/1"
-                    },
-                    "action": "set"
                 }]]
                 )
 
@@ -1113,8 +917,6 @@ passed
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -1176,8 +978,6 @@ GET /t
 --- error_code: 401
 --- response_body eval
 qr/\{"message":"The service_id is forbidden."\}/
---- no_error_log
-[error]
 
 
 
@@ -1201,27 +1001,6 @@ qr/\{"message":"The service_id is forbidden."\}/
                             "rejected_code": 401
                         }
                     }
-                }]],
-                [[{
-                    "node": {
-                        "value": {
-                            "username": "jack",
-                            "plugins": {
-                                "hmac-auth": {
-                                    "access_key": "my-access-key",
-                                    "secret_key": "my-secret-key",
-                                    "algorithm": "hmac-sha256",
-                                    "clock_skew": 0
-                                },
-                                "consumer-restriction": {
-                                    "type": "service_id",
-                                    "blacklist": [ "1" ],
-                                    "rejected_code": 401
-                                }
-                            }
-                        }
-                    },
-                    "action": "set"
                 }]]
                 )
 
@@ -1233,8 +1012,6 @@ qr/\{"message":"The service_id is forbidden."\}/
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -1259,28 +1036,6 @@ passed
                         "hmac-auth": {}
                     }
 
-                }]],
-                [[{
-                    "node": {
-                        "value": {
-                            "methods": [
-                                "GET"
-                            ],
-                            "uri": "/hello",
-                            "upstream": {
-                                "nodes": {
-                                    "127.0.0.1:1980": 1
-                                },
-                                "type": "roundrobin"
-                            },
-                            "service_id": 1,
-                            "plugins": {
-                                "hmac-auth": {}
-                            }
-                        },
-                        "key": "/apisix/routes/1"
-                    },
-                    "action": "set"
                 }]]
                 )
 
@@ -1292,8 +1047,6 @@ passed
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -1353,8 +1106,6 @@ GET /t
 --- error_code: 401
 --- response_body eval
 qr/\{"message":"The service_id is forbidden."\}/
---- no_error_log
-[error]
 
 
 
@@ -1379,28 +1130,6 @@ qr/\{"message":"The service_id is forbidden."\}/
                         "hmac-auth": {}
                     }
 
-                }]],
-                [[{
-                    "node": {
-                        "value": {
-                            "methods": [
-                                "GET"
-                            ],
-                            "uri": "/hello",
-                            "upstream": {
-                                "nodes": {
-                                    "127.0.0.1:1980": 1
-                                },
-                                "type": "roundrobin"
-                            },
-                            "service_id": 2,
-                            "plugins": {
-                                "hmac-auth": {}
-                            }
-                        },
-                        "key": "/apisix/routes/1"
-                    },
-                    "action": "set"
                 }]]
                 )
 
@@ -1412,8 +1141,6 @@ qr/\{"message":"The service_id is forbidden."\}/
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -1472,8 +1199,6 @@ location /t {
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -1497,27 +1222,6 @@ passed
                             "rejected_code": 401
                         }
                     }
-                }]],
-                [[{
-                    "node": {
-                        "value": {
-                            "username": "jack",
-                            "plugins": {
-                                "hmac-auth": {
-                                    "access_key": "my-access-key",
-                                    "secret_key": "my-secret-key",
-                                    "algorithm": "hmac-sha256",
-                                    "clock_skew": 0
-                                },
-                                "consumer-restriction": {
-                                    "type": "route_id",
-                                    "whitelist": [ "1" ],
-                                    "rejected_code": 401
-                                }
-                            }
-                        }
-                    },
-                    "action": "set"
                 }]]
                 )
 
@@ -1529,8 +1233,6 @@ passed
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -1587,8 +1289,6 @@ location /t {
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -1612,27 +1312,6 @@ passed
                             "rejected_code": 401
                         }
                     }
-                }]],
-                [[{
-                    "node": {
-                        "value": {
-                            "username": "jack",
-                            "plugins": {
-                                "hmac-auth": {
-                                    "access_key": "my-access-key",
-                                    "secret_key": "my-secret-key",
-                                    "algorithm": "hmac-sha256",
-                                    "clock_skew": 0
-                                },
-                                "consumer-restriction": {
-                                    "type": "route_id",
-                                    "blacklist": [ "1" ],
-                                    "rejected_code": 401
-                                }
-                            }
-                        }
-                    },
-                    "action": "set"
                 }]]
                 )
 
@@ -1644,8 +1323,6 @@ passed
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -1705,8 +1382,6 @@ GET /t
 --- error_code: 401
 --- response_body eval
 qr/\{"message":"The route_id is forbidden."\}/
---- no_error_log
-[error]
 
 
 
@@ -1725,8 +1400,6 @@ qr/\{"message":"The route_id is forbidden."\}/
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -1745,8 +1418,6 @@ passed
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -1765,5 +1436,3 @@ passed
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]

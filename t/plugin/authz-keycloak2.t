@@ -34,7 +34,7 @@ __DATA__
                  [[{
                         "plugins": {
                             "authz-keycloak": {
-                                "token_endpoint": "http://127.0.0.1:8090/auth/realms/University/protocol/openid-connect/token",
+                                "token_endpoint": "http://127.0.0.1:8080/realms/University/protocol/openid-connect/token",
                                 "permissions": ["course_resource#view"],
                                 "client_id": "course_management",
                                 "grant_type": "urn:ietf:params:oauth:grant-type:uma-ticket",
@@ -48,30 +48,6 @@ __DATA__
                             "type": "roundrobin"
                         },
                         "uri": "/hello1"
-                }]],
-                [[{
-                    "node": {
-                        "value": {
-                            "plugins": {
-                                "authz-keycloak": {
-                                    "token_endpoint": "http://127.0.0.1:8090/auth/realms/University/protocol/openid-connect/token",
-                                    "permissions": ["course_resource#view"],
-                                    "client_id": "course_management",
-                                    "grant_type": "urn:ietf:params:oauth:grant-type:uma-ticket",
-                                    "timeout": 3000
-                                }
-                            },
-                            "upstream": {
-                                "nodes": {
-                                    "127.0.0.1:1982": 1
-                                },
-                                "type": "roundrobin"
-                            },
-                            "uri": "/hello1"
-                        },
-                        "key": "/apisix/routes/1"
-                    },
-                    "action": "set"
                 }]]
                 )
 
@@ -85,8 +61,6 @@ __DATA__
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -97,7 +71,7 @@ passed
             local json_decode = require("toolkit.json").decode
             local http = require "resty.http"
             local httpc = http.new()
-            local uri = "http://127.0.0.1:8090/auth/realms/University/protocol/openid-connect/token"
+            local uri = "http://127.0.0.1:8080/realms/University/protocol/openid-connect/token"
             local res, err = httpc:request_uri(uri, {
                     method = "POST",
                     body = "grant_type=password&client_id=course_management&client_secret=d1ec69e9-55d2-4109-a3ea-befa071579d5&username=teacher@gmail.com&password=123456",
@@ -122,6 +96,7 @@ passed
                 if res.status == 200 then
                     ngx.say(true)
                 else
+                    ngx.say(res.status)
                     ngx.say(false)
                 end
             else
@@ -133,8 +108,6 @@ passed
 GET /t
 --- response_body
 true
---- no_error_log
-[error]
 
 
 
@@ -175,7 +148,7 @@ Invalid bearer token
                  [[{
                         "plugins": {
                             "authz-keycloak": {
-                                "discovery": "http://127.0.0.1:8090/auth/realms/University/.well-known/uma2-configuration",
+                                "discovery": "http://127.0.0.1:8080/realms/University/.well-known/uma2-configuration",
                                 "permissions": ["course_resource#view"],
                                 "client_id": "course_management",
                                 "grant_type": "urn:ietf:params:oauth:grant-type:uma-ticket",
@@ -189,30 +162,6 @@ Invalid bearer token
                             "type": "roundrobin"
                         },
                         "uri": "/hello1"
-                }]],
-                [[{
-                    "node": {
-                        "value": {
-                            "plugins": {
-                                "authz-keycloak": {
-                                    "discovery": "http://127.0.0.1:8090/auth/realms/University/.well-known/uma2-configuration",
-                                    "permissions": ["course_resource#view"],
-                                    "client_id": "course_management",
-                                    "grant_type": "urn:ietf:params:oauth:grant-type:uma-ticket",
-                                    "timeout": 3000
-                                }
-                            },
-                            "upstream": {
-                                "nodes": {
-                                    "127.0.0.1:1982": 1
-                                },
-                                "type": "roundrobin"
-                            },
-                            "uri": "/hello1"
-                        },
-                        "key": "/apisix/routes/1"
-                    },
-                    "action": "set"
                 }]]
                 )
 
@@ -226,8 +175,6 @@ Invalid bearer token
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -238,7 +185,7 @@ passed
             local json_decode = require("toolkit.json").decode
             local http = require "resty.http"
             local httpc = http.new()
-            local uri = "http://127.0.0.1:8090/auth/realms/University/protocol/openid-connect/token"
+            local uri = "http://127.0.0.1:8080/realms/University/protocol/openid-connect/token"
             local res, err = httpc:request_uri(uri, {
                     method = "POST",
                     body = "grant_type=password&client_id=course_management&client_secret=d1ec69e9-55d2-4109-a3ea-befa071579d5&username=teacher@gmail.com&password=123456",
@@ -274,8 +221,6 @@ passed
 GET /t
 --- response_body
 true
---- no_error_log
-[error]
 
 
 
@@ -316,7 +261,7 @@ Invalid bearer token
                  [[{
                         "plugins": {
                             "authz-keycloak": {
-                                "token_endpoint": "http://127.0.0.1:8090/auth/realms/University/protocol/openid-connect/token",
+                                "token_endpoint": "http://127.0.0.1:8080/realms/University/protocol/openid-connect/token",
                                 "permissions": ["course_resource#delete"],
                                 "client_id": "course_management",
                                 "grant_type": "urn:ietf:params:oauth:grant-type:uma-ticket",
@@ -330,30 +275,6 @@ Invalid bearer token
                             "type": "roundrobin"
                         },
                         "uri": "/hello1"
-                }]],
-                [[{
-                    "node": {
-                        "value": {
-                            "plugins": {
-                                "authz-keycloak": {
-                                    "token_endpoint": "http://127.0.0.1:8090/auth/realms/University/protocol/openid-connect/token",
-                                    "permissions": ["course_resource#delete"],
-                                    "client_id": "course_management",
-                                    "grant_type": "urn:ietf:params:oauth:grant-type:uma-ticket",
-                                    "timeout": 3000
-                                }
-                            },
-                            "upstream": {
-                                "nodes": {
-                                    "127.0.0.1:1982": 1
-                                },
-                                "type": "roundrobin"
-                            },
-                            "uri": "/hello1"
-                        },
-                        "key": "/apisix/routes/1"
-                    },
-                    "action": "set"
                 }]]
                 )
 
@@ -367,8 +288,6 @@ Invalid bearer token
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -379,7 +298,7 @@ passed
             local json_decode = require("toolkit.json").decode
             local http = require "resty.http"
             local httpc = http.new()
-            local uri = "http://127.0.0.1:8090/auth/realms/University/protocol/openid-connect/token"
+            local uri = "http://127.0.0.1:8080/realms/University/protocol/openid-connect/token"
             local res, err = httpc:request_uri(uri, {
                     method = "POST",
                     body = "grant_type=password&client_id=course_management&client_secret=d1ec69e9-55d2-4109-a3ea-befa071579d5&username=student@gmail.com&password=123456",
@@ -430,7 +349,7 @@ true
                  [[{
                         "plugins": {
                             "authz-keycloak": {
-                                "discovery": "http://127.0.0.1:8090/auth/realms/University/.well-known/uma2-configuration",
+                                "discovery": "http://127.0.0.1:8080/realms/University/.well-known/uma2-configuration",
                                 "client_id": "course_management",
                                 "client_secret": "d1ec69e9-55d2-4109-a3ea-befa071579d5",
                                 "lazy_load_paths": true,
@@ -444,30 +363,6 @@ true
                             "type": "roundrobin"
                         },
                         "uri": "/course/foo"
-                }]],
-                [[{
-                    "node": {
-                        "value": {
-                            "plugins": {
-                                "authz-keycloak": {
-                                    "discovery": "http://127.0.0.1:8090/auth/realms/University/.well-known/uma2-configuration",
-                                    "client_id": "course_management",
-                                    "client_secret": "d1ec69e9-55d2-4109-a3ea-befa071579d5",
-                                    "lazy_load_paths": true,
-                                    "http_method_as_scope": true
-                                }
-                            },
-                            "upstream": {
-                                "nodes": {
-                                    "127.0.0.1:1982": 1
-                                },
-                                "type": "roundrobin"
-                            },
-                            "uri": "/course/foo"
-                        },
-                        "key": "/apisix/routes/1"
-                    },
-                    "action": "set"
                 }]]
                 )
 
@@ -481,8 +376,6 @@ true
 GET /t
 --- response_body
 passed
---- no_error_log
-[error]
 
 
 
@@ -493,7 +386,7 @@ passed
             local json_decode = require("toolkit.json").decode
             local http = require "resty.http"
             local httpc = http.new()
-            local uri = "http://127.0.0.1:8090/auth/realms/University/protocol/openid-connect/token"
+            local uri = "http://127.0.0.1:8080/realms/University/protocol/openid-connect/token"
             local res, err = httpc:request_uri(uri, {
                     method = "POST",
                     body = "grant_type=password&client_id=course_management&client_secret=d1ec69e9-55d2-4109-a3ea-befa071579d5&username=teacher@gmail.com&password=123456",
@@ -529,8 +422,6 @@ passed
 GET /t
 --- response_body
 true
---- no_error_log
-[error]
 
 
 
@@ -541,7 +432,7 @@ true
             local json_decode = require("toolkit.json").decode
             local http = require "resty.http"
             local httpc = http.new()
-            local uri = "http://127.0.0.1:8090/auth/realms/University/protocol/openid-connect/token"
+            local uri = "http://127.0.0.1:8080/realms/University/protocol/openid-connect/token"
             local res, err = httpc:request_uri(uri, {
                     method = "POST",
                     body = "grant_type=password&client_id=course_management&client_secret=d1ec69e9-55d2-4109-a3ea-befa071579d5&username=student@gmail.com&password=123456",
@@ -577,8 +468,6 @@ true
 GET /t
 --- response_body
 true
---- no_error_log
-[error]
 
 
 
@@ -589,7 +478,7 @@ true
             local json_decode = require("toolkit.json").decode
             local http = require "resty.http"
             local httpc = http.new()
-            local uri = "http://127.0.0.1:8090/auth/realms/University/protocol/openid-connect/token"
+            local uri = "http://127.0.0.1:8080/realms/University/protocol/openid-connect/token"
             local res, err = httpc:request_uri(uri, {
                     method = "POST",
                     body = "grant_type=password&client_id=course_management&client_secret=d1ec69e9-55d2-4109-a3ea-befa071579d5&username=teacher@gmail.com&password=123456",
@@ -625,8 +514,6 @@ true
 GET /t
 --- response_body
 true
---- no_error_log
-[error]
 
 
 
@@ -637,7 +524,7 @@ true
             local json_decode = require("toolkit.json").decode
             local http = require "resty.http"
             local httpc = http.new()
-            local uri = "http://127.0.0.1:8090/auth/realms/University/protocol/openid-connect/token"
+            local uri = "http://127.0.0.1:8080/realms/University/protocol/openid-connect/token"
             local res, err = httpc:request_uri(uri, {
                     method = "POST",
                     body = "grant_type=password&client_id=course_management&client_secret=d1ec69e9-55d2-4109-a3ea-befa071579d5&username=student@gmail.com&password=123456",
@@ -678,80 +565,14 @@ true
 
 
 
-=== TEST 14: add plugin with lazy_load_paths and http_method_as_scope (using audience)
---- config
-    location /t {
-        content_by_lua_block {
-            local t = require("lib.test_admin").test
-            local code, body = t('/apisix/admin/routes/1',
-                 ngx.HTTP_PUT,
-                 [[{
-                        "plugins": {
-                            "authz-keycloak": {
-                                "discovery": "http://127.0.0.1:8090/auth/realms/University/.well-known/uma2-configuration",
-                                "audience": "course_management",
-                                "client_secret": "d1ec69e9-55d2-4109-a3ea-befa071579d5",
-                                "lazy_load_paths": true,
-                                "http_method_as_scope": true
-                            }
-                        },
-                        "upstream": {
-                            "nodes": {
-                                "127.0.0.1:1982": 1
-                            },
-                            "type": "roundrobin"
-                        },
-                        "uri": "/course/foo"
-                }]],
-                [[{
-                    "node": {
-                        "value": {
-                            "plugins": {
-                                "authz-keycloak": {
-                                    "discovery": "http://127.0.0.1:8090/auth/realms/University/.well-known/uma2-configuration",
-                                    "audience": "course_management",
-                                    "client_secret": "d1ec69e9-55d2-4109-a3ea-befa071579d5",
-                                    "lazy_load_paths": true,
-                                    "http_method_as_scope": true
-                                }
-                            },
-                            "upstream": {
-                                "nodes": {
-                                    "127.0.0.1:1982": 1
-                                },
-                                "type": "roundrobin"
-                            },
-                            "uri": "/course/foo"
-                        },
-                        "key": "/apisix/routes/1"
-                    },
-                    "action": "set"
-                }]]
-                )
-
-            if code >= 300 then
-                ngx.status = code
-            end
-            ngx.say(body)
-        }
-    }
---- request
-GET /t
---- response_body
-passed
---- no_error_log
-[error]
-
-
-
-=== TEST 15: Get access token for teacher and access view course route.
+=== TEST 14: Get access token for teacher and access view course route.
 --- config
     location /t {
         content_by_lua_block {
             local json_decode = require("toolkit.json").decode
             local http = require "resty.http"
             local httpc = http.new()
-            local uri = "http://127.0.0.1:8090/auth/realms/University/protocol/openid-connect/token"
+            local uri = "http://127.0.0.1:8080/realms/University/protocol/openid-connect/token"
             local res, err = httpc:request_uri(uri, {
                     method = "POST",
                     body = "grant_type=password&client_id=course_management&client_secret=d1ec69e9-55d2-4109-a3ea-befa071579d5&username=teacher@gmail.com&password=123456",
@@ -787,19 +608,17 @@ passed
 GET /t
 --- response_body
 true
---- no_error_log
-[error]
 
 
 
-=== TEST 16: Get access token for student and access view course route.
+=== TEST 15: Get access token for student and access view course route.
 --- config
     location /t {
         content_by_lua_block {
             local json_decode = require("toolkit.json").decode
             local http = require "resty.http"
             local httpc = http.new()
-            local uri = "http://127.0.0.1:8090/auth/realms/University/protocol/openid-connect/token"
+            local uri = "http://127.0.0.1:8080/realms/University/protocol/openid-connect/token"
             local res, err = httpc:request_uri(uri, {
                     method = "POST",
                     body = "grant_type=password&client_id=course_management&client_secret=d1ec69e9-55d2-4109-a3ea-befa071579d5&username=student@gmail.com&password=123456",
@@ -835,5 +654,3 @@ true
 GET /t
 --- response_body
 true
---- no_error_log
-[error]

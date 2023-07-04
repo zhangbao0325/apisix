@@ -32,10 +32,6 @@ no_shuffle();
 
 add_block_preprocessor(sub {
     my ($block) = @_;
-
-    if ((!defined $block->error_log) && (!defined $block->no_error_log)) {
-        $block->set_value("no_error_log", "[error]");
-    }
 });
 
 run_tests();
@@ -77,7 +73,7 @@ __DATA__
 GET /t
 --- error_code: 400
 --- response_body
-{"error_msg":"invalid configuration: property \"upstream\" validation failed: property \"tls\" validation failed: property \"client_key\" is required"}
+{"error_msg":"invalid configuration: property \"upstream\" validation failed: property \"tls\" validation failed: failed to validate dependent schema for \"client_cert\": property \"client_key\" is required"}
 
 
 
@@ -167,7 +163,7 @@ decrypt ssl key failed
             end
 
             res = json.decode(res)
-            ngx.say(res.node.value.upstream.tls.client_key == ssl_key)
+            ngx.say(res.value.upstream.tls.client_key == ssl_key)
 
             -- upstream
             local data = {
@@ -203,7 +199,7 @@ decrypt ssl key failed
             end
 
             res = json.decode(res)
-            ngx.say(res.node.value.tls.client_key == ssl_key)
+            ngx.say(res.value.tls.client_key == ssl_key)
 
             local data = {
                 upstream = {
@@ -240,7 +236,7 @@ decrypt ssl key failed
             end
 
             res = json.decode(res)
-            ngx.say(res.node.value.upstream.tls.client_key == ssl_key)
+            ngx.say(res.value.upstream.tls.client_key == ssl_key)
         }
     }
 --- request
@@ -341,7 +337,6 @@ GET /t
 --- yaml_config
 apisix:
     node_listen: 1984
-    admin_key: null
     ssl:
         key_encrypt_salt: null
 --- config
@@ -387,7 +382,7 @@ apisix:
             end
 
             res = json.decode(res)
-            ngx.say(res.node.value.upstream.tls.client_key == ssl_key)
+            ngx.say(res.value.upstream.tls.client_key == ssl_key)
 
             -- upstream
             local data = {
@@ -423,7 +418,7 @@ apisix:
             end
 
             res = json.decode(res)
-            ngx.say(res.node.value.tls.client_key == ssl_key)
+            ngx.say(res.value.tls.client_key == ssl_key)
 
             local data = {
                 upstream = {
@@ -460,7 +455,7 @@ apisix:
             end
 
             res = json.decode(res)
-            ngx.say(res.node.value.upstream.tls.client_key == ssl_key)
+            ngx.say(res.value.upstream.tls.client_key == ssl_key)
         }
     }
 --- request
@@ -545,3 +540,145 @@ GET /t
 GET /hello_chunked
 --- response_body
 hello world
+
+
+
+=== TEST 13: get cert by tls.client_cert_id
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin")
+            local json = require("toolkit.json")
+
+            local ssl_cert = t.read_file("t/certs/mtls_client.crt")
+            local ssl_key = t.read_file("t/certs/mtls_client.key")
+            local data = {
+                type = "client",
+                cert = ssl_cert,
+                key = ssl_key
+            }
+            local code, body = t.test('/apisix/admin/ssls/1',
+                ngx.HTTP_PUT,
+                json.encode(data)
+            )
+
+            if code >= 300 then
+                ngx.status = code
+                ngx.say(body)
+                return
+            end
+
+            local data = {
+                upstream = {
+                    scheme = "https",
+                    type = "roundrobin",
+                    nodes = {
+                        ["127.0.0.1:1983"] = 1,
+                    },
+                    tls = {
+                        client_cert_id = 1
+                    }
+                },
+                uri = "/hello"
+            }
+            local code, body = t.test('/apisix/admin/routes/1',
+                ngx.HTTP_PUT,
+                json.encode(data)
+            )
+
+            if code >= 300 then
+                ngx.status = code
+                ngx.say(body)
+                return
+            end
+        }
+    }
+--- request
+GET /t
+
+
+
+=== TEST 14: hit
+--- upstream_server_config
+    ssl_client_certificate ../../certs/mtls_ca.crt;
+    ssl_verify_client on;
+--- request
+GET /hello
+--- response_body
+hello world
+
+
+
+=== TEST 15: change ssl object type
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin")
+            local json = require("toolkit.json")
+
+            local ssl_cert = t.read_file("t/certs/mtls_client.crt")
+            local ssl_key = t.read_file("t/certs/mtls_client.key")
+            local data = {
+                type = "server",
+                sni = "test.com",
+                cert = ssl_cert,
+                key = ssl_key
+            }
+            local code, body = t.test('/apisix/admin/ssls/1',
+                ngx.HTTP_PUT,
+                json.encode(data)
+            )
+            if code >= 300 then
+                ngx.status = code
+                ngx.say(body)
+                return
+            end
+        }
+    }
+--- request
+GET /t
+
+
+
+=== TEST 16: hit, ssl object type mismatch
+--- upstream_server_config
+    ssl_client_certificate ../../certs/mtls_ca.crt;
+    ssl_verify_client on;
+--- request
+GET /hello
+--- error_code: 502
+--- error_log
+failed to get ssl cert: ssl type should be 'client'
+
+
+
+=== TEST 17: delete ssl object
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin")
+            local json = require("toolkit.json")
+
+            local code, body = t.test('/apisix/admin/ssls/1', ngx.HTTP_DELETE)
+
+            if code >= 300 then
+                ngx.status = code
+                ngx.say(body)
+                return
+            end
+        }
+    }
+--- request
+GET /t
+
+
+
+=== TEST 18: hit, ssl object not exits
+--- upstream_server_config
+    ssl_client_certificate ../../certs/mtls_ca.crt;
+    ssl_verify_client on;
+--- request
+GET /hello
+--- error_code: 502
+--- error_log
+failed to get ssl cert: ssl id [1] not exits
