@@ -43,11 +43,11 @@ A common scenario is to set crawler rules. `User-Agent` is the identity of the c
 
 :::note
 
-Both `allowlist` and `denylist` can be used on their own. If they are used together, the `allowlist` matches before the `denylist`.
+Both `allowlist` and `denylist` can't be used at the same time.
 
 :::
 
-## Enabling the Plugin
+## Enable Plugin
 
 You can enable the Plugin on a Route or a Service as shown below:
 

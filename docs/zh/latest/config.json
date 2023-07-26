@@ -1,5 +1,5 @@
 {
-  "version": "3.3.0",
+  "version": "3.4.0",
   "sidebar": [
     {
       "type": "doc",
@@ -166,7 +166,8 @@
                 "plugins/file-logger",
                 "plugins/loggly",
                 "plugins/elasticsearch-logger",
-                "plugins/tencent-cloud-cls"
+                "plugins/tencent-cloud-cls",
+                "plugins/loki-logger"
               ]
             }
           ]
